@@ -15,6 +15,7 @@
           <th class="p-3">Status</th>
           <th class="p-3">Progress</th>
           <th class="p-3">Created</th>
+          <th class="p-3">Actions</th>
         </tr>
       </thead>
       <tbody>
@@ -24,9 +25,42 @@
             <td class="p-3">{{ job.status }} ({{ job.stage }})</td>
             <td class="p-3">{{ (job.progress * 100) | round(1) }}%</td>
             <td class="p-3">{{ job.created_at }}</td>
+            <td class="p-3">
+              <div class="flex flex-wrap gap-2">
+                {% if job.status == "running" %}
+                  <form method="post" action="/jobs/{{ job.id }}/stop">
+                    <button class="text-xs bg-amber-500 text-white rounded px-2 py-1 hover:bg-amber-600" type="submit">Stop</button>
+                  </form>
+                {% endif %}
+
+                {% if job.status in ["queued", "running", "stopped"] %}
+                  <form method="post" action="/jobs/{{ job.id }}/cancel">
+                    <button class="text-xs bg-rose-600 text-white rounded px-2 py-1 hover:bg-rose-700" type="submit">Cancel</button>
+                  </form>
+                {% endif %}
+
+                {% if job.status == "stopped" %}
+                  <form method="post" action="/jobs/{{ job.id }}/resume">
+                    <button class="text-xs bg-emerald-600 text-white rounded px-2 py-1 hover:bg-emerald-700" type="submit">Resume</button>
+                  </form>
+                {% endif %}
+
+                {% if job.status in ["failed", "cancelled"] %}
+                  <form method="post" action="/jobs/{{ job.id }}/retry">
+                    <button class="text-xs bg-indigo-600 text-white rounded px-2 py-1 hover:bg-indigo-700" type="submit">Retry</button>
+                  </form>
+                {% endif %}
+
+                {% if job.status != "running" %}
+                  <form method="post" action="/jobs/{{ job.id }}/delete">
+                    <button class="text-xs bg-slate-200 text-slate-800 rounded px-2 py-1 hover:bg-slate-300" type="submit">Delete</button>
+                  </form>
+                {% endif %}
+              </div>
+            </td>
           </tr>
         {% else %}
-          <tr><td class="p-3" colspan="4">No jobs yet.</td></tr>
+          <tr><td class="p-3" colspan="5">No jobs yet.</td></tr>
         {% endfor %}
       </tbody>
     </table>

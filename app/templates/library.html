@@ -10,6 +10,7 @@
         <tr class="border-b">
           <th class="p-3">Topic</th>
           <th class="p-3">Updated</th>
+          <th class="p-3">Read</th>
           <th class="p-3">Download</th>
         </tr>
       </thead>
@@ -21,7 +22,10 @@
             </td>
             <td class="p-3">{{ job.updated_at }}</td>
             <td class="p-3">
-              <a class="text-slate-900 hover:underline" href="/jobs/{{ job.id }}/download">Download Markdown</a>
+              <a class="text-slate-900 hover:underline" href="/jobs/{{ job.id }}/read" target="_blank" rel="noreferrer">Read rendered</a>
+            </td>
+            <td class="p-3">
+              <a class="text-slate-900 hover:underline" href="/jobs/{{ job.id }}/download.pdf">Download PDF</a>
             </td>
           </tr>
         {% else %}

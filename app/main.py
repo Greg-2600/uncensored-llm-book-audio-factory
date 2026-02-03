@@ -12,6 +12,7 @@ from fastapi.templating import Jinja2Templates
 from . import db
 from .eta import estimate_remaining_seconds, format_eta
 from .generator import run_job
+from .pdf_export import render_markdown_to_pdf
 from .settings import settings
 
 
@@ -159,8 +160,8 @@ async def retry_job(job_id: str) -> Response:
     job = await db.get_job(settings.db_path, job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
-    if job.status != "failed":
-        raise HTTPException(status_code=400, detail="Only failed jobs can be retried")
+    if job.status not in {"failed", "cancelled"}:
+        raise HTTPException(status_code=400, detail="Only failed or cancelled jobs can be retried")
     await db.set_job_status(
         settings.db_path,
         job.id,
@@ -173,6 +174,17 @@ async def retry_job(job_id: str) -> Response:
     await db.append_event(settings.db_path, job.id, "info", "Job retried")
     await runner.enqueue(job.id)
     return RedirectResponse(url=f"/jobs/{job.id}", status_code=303)
+
+
+@app.post("/jobs/{job_id}/delete")
+async def delete_job(job_id: str) -> Response:
+    job = await db.get_job(settings.db_path, job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job.status == "running":
+        raise HTTPException(status_code=400, detail="Stop or cancel running job before delete")
+    await db.delete_job(settings.db_path, job.id)
+    return RedirectResponse(url="/jobs", status_code=303)
 
 
 @app.get("/jobs", response_class=HTMLResponse)
@@ -252,6 +264,62 @@ async def download_book(job_id: str) -> Response:
         content=data,
         media_type="text/markdown; charset=utf-8",
         headers={"Content-Disposition": f"attachment; filename={path.name}"},
+    )
+
+
+@app.get("/jobs/{job_id}/read", response_class=HTMLResponse)
+async def read_book(job_id: str) -> Response:
+    job = await db.get_job(settings.db_path, job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job.status != "completed" or not job.output_path:
+        raise HTTPException(status_code=400, detail="Job not completed")
+    md_path = Path(job.output_path)
+    if not md_path.exists():
+        raise HTTPException(status_code=404, detail="Output file missing")
+
+    try:
+        from markdown import markdown  # lazy import
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"Markdown rendering failed: {exc}") from exc
+
+    md_text = md_path.read_text(encoding="utf-8")
+    html_body = markdown(md_text, output_format="html5")
+    return templates.TemplateResponse(
+        "read.html",
+        {
+            "request": request,
+            "job": job,
+            "html_body": html_body,
+        },
+    )
+
+
+@app.get("/jobs/{job_id}/download.pdf")
+async def download_book_pdf(job_id: str) -> Response:
+    job = await db.get_job(settings.db_path, job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job.status != "completed" or not job.output_path:
+        raise HTTPException(status_code=400, detail="Job not completed")
+    md_path = Path(job.output_path)
+    if not md_path.exists():
+        raise HTTPException(status_code=404, detail="Output file missing")
+
+    pdf_name = f"{md_path.stem}.pdf"
+    pdf_path = md_path.with_name(pdf_name)
+    if not pdf_path.exists():
+        md_text = md_path.read_text(encoding="utf-8")
+        try:
+            render_markdown_to_pdf(md_text, pdf_path)
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(status_code=500, detail=f"PDF export failed: {exc}") from exc
+
+    data = pdf_path.read_bytes()
+    return Response(
+        content=data,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename={pdf_name}"},
     )
 
 

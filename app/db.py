@@ -316,3 +316,10 @@ async def get_events(db_path: str, job_id: str, limit: int = 200) -> list[dict[s
             # Return chronological for nicer UI
             rows = list(reversed(rows))
             return [{"ts": r["ts"], "level": r["level"], "message": r["message"]} for r in rows]
+
+
+async def delete_job(db_path: str, job_id: str) -> None:
+    async with aiosqlite.connect(db_path) as db:
+        await db.execute("DELETE FROM job_events WHERE job_id = ?", (job_id,))
+        await db.execute("DELETE FROM jobs WHERE id = ?", (job_id,))
+        await db.commit()

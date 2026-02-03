@@ -64,3 +64,37 @@ def test_retry_failed_job(tmp_path: Path) -> None:
         assert _run(_get_status("job-failed")) == "queued"
     finally:
         settings.db_path = original_db_path
+
+
+def test_retry_cancelled_job(tmp_path: Path) -> None:
+    db_path = str(tmp_path / "test.db")
+
+    _run(
+        _insert_job(
+            db_path=db_path,
+            job_id="job-cancelled",
+            topic="Cancelled",
+            status="cancelled",
+            progress=0.0,
+            stage="cancelled",
+        )
+    )
+
+    original_db_path = settings.db_path
+    try:
+        settings.db_path = db_path
+        client = TestClient(app)
+
+        response = client.post("/jobs/job-cancelled/retry", allow_redirects=False)
+        assert response.status_code == 303
+
+        async def _get_status(job_id: str) -> str:
+            async with aiosqlite.connect(db_path) as conn:
+                conn.row_factory = aiosqlite.Row
+                async with conn.execute("SELECT status FROM jobs WHERE id = ?", (job_id,)) as cur:
+                    row = await cur.fetchone()
+                    return str(row["status"])
+
+        assert _run(_get_status("job-cancelled")) == "queued"
+    finally:
+        settings.db_path = original_db_path

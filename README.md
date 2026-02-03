@@ -24,6 +24,9 @@ Open `http://localhost:8000`.
 - Running jobs show an ETA based on current progress.
 - Job controls: stop (`POST /jobs/{id}/stop`), cancel (`POST /jobs/{id}/cancel`), resume (`POST /jobs/{id}/resume`).
 - Retry failed jobs: `POST /jobs/{id}/retry`.
+- Delete jobs: `POST /jobs/{id}/delete` (not allowed for running jobs).
+- PDF export: `GET /jobs/{id}/download.pdf` (uses `weasyprint` with `xhtml2pdf` fallback).
+- Rendered reader: `GET /jobs/{id}/read` (opens formatted HTML in a new tab).
 
 ## Venv + Ollama SSH testing
 
