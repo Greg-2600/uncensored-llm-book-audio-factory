@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{{ title or "Book Generator" }}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+  </head>
+  <body class="bg-slate-50 text-slate-900">
+    <div class="max-w-5xl mx-auto px-4 py-6">
+      <div class="flex items-center justify-between">
+        <a href="/" class="text-xl font-semibold">Book Generator</a>
+        <nav class="text-sm">
+          <a class="text-slate-700 hover:text-slate-900" href="/jobs">Queue</a>
+        </nav>
+      </div>
+      <div class="mt-6">
+        {% block content %}{% endblock %}
+      </div>
+      <div class="mt-10 text-xs text-slate-500">
+        Uses Ollama at <span class="font-mono">{{ ollama_base_url or "" }}</span> model <span class="font-mono">{{ ollama_model or "" }}</span>
+      </div>
+    </div>
+  </body>
+</html>

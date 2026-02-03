@@ -1,0 +1,23 @@
+<div class="bg-white rounded-lg shadow p-4">
+  <div class="flex items-center justify-between">
+    <div class="text-sm text-slate-600">Status</div>
+    <div class="text-sm font-medium">{{ job.status }}</div>
+  </div>
+  <div class="mt-2 text-sm text-slate-700">Stage: <span class="font-medium">{{ job.stage }}</span></div>
+
+  <div class="mt-4">
+    <div class="flex items-center justify-between text-xs text-slate-600">
+      <div>Progress</div>
+      <div>{{ (job.progress * 100) | round(1) }}%</div>
+    </div>
+    <div class="mt-2 w-full bg-slate-100 rounded h-3">
+      <div class="bg-slate-900 h-3 rounded" style="width: {{ (job.progress * 100) | round(1) }}%"></div>
+    </div>
+  </div>
+
+  {% if job.error %}
+    <div class="mt-4 text-sm text-red-700 bg-red-50 border border-red-200 rounded p-3">{{ job.error }}</div>
+  {% endif %}
+
+  <div class="mt-4 text-xs text-slate-500">Updated: {{ job.updated_at }}</div>
+</div>
