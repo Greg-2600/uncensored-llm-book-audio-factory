@@ -9,6 +9,8 @@ from typing import Any, Optional
 
 import aiosqlite
 
+from .eta import estimate_remaining_seconds, format_eta, parse_iso
+
 
 def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -187,6 +189,114 @@ async def list_jobs(db_path: str, limit: int = 50) -> list[Job]:
                 )
                 for row in rows
             ]
+
+
+async def list_completed_jobs(db_path: str, limit: int = 200) -> list[Job]:
+    async with aiosqlite.connect(db_path) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            """
+            SELECT * FROM jobs
+            WHERE status = 'completed' AND output_path IS NOT NULL
+            ORDER BY updated_at DESC
+            LIMIT ?
+            """,
+            (limit,),
+        ) as cur:
+            rows = await cur.fetchall()
+            return [
+                Job(
+                    id=row["id"],
+                    topic=row["topic"],
+                    status=row["status"],
+                    progress=float(row["progress"]),
+                    stage=row["stage"],
+                    error=row["error"],
+                    output_path=row["output_path"],
+                    created_at=row["created_at"],
+                    updated_at=row["updated_at"],
+                )
+                for row in rows
+            ]
+
+
+async def get_queue_stats(db_path: str) -> dict[str, float | int | str | None]:
+    async with aiosqlite.connect(db_path) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT status, progress, created_at, updated_at FROM jobs") as cur:
+            rows = await cur.fetchall()
+
+    total = len(rows)
+    completed = 0
+    running = 0
+    queued = 0
+    failed = 0
+    stopped = 0
+    cancelled = 0
+    progress_sum = 0.0
+    completed_durations: list[float] = []
+    running_eta_seconds: int | None = None
+
+    for row in rows:
+        status = row["status"]
+        progress = float(row["progress"] or 0.0)
+        if status == "completed":
+            completed += 1
+            progress_sum += 1.0
+            created = parse_iso(row["created_at"])
+            updated = parse_iso(row["updated_at"])
+            if created and updated:
+                if created.tzinfo is None:
+                    created = created.replace(tzinfo=timezone.utc)
+                if updated.tzinfo is None:
+                    updated = updated.replace(tzinfo=timezone.utc)
+                duration = (updated - created).total_seconds()
+                if duration > 0:
+                    completed_durations.append(duration)
+        elif status == "running":
+            running += 1
+            progress_sum += max(0.0, min(progress, 1.0))
+            if running_eta_seconds is None:
+                eta = estimate_remaining_seconds(created_at=row["created_at"], progress=progress)
+                if eta is not None:
+                    running_eta_seconds = eta
+        elif status == "failed":
+            failed += 1
+            progress_sum += 1.0
+        elif status == "stopped":
+            stopped += 1
+            progress_sum += 1.0
+        elif status == "cancelled":
+            cancelled += 1
+            progress_sum += 1.0
+        else:
+            queued += 1
+            progress_sum += max(0.0, min(progress, 1.0))
+
+    percent_complete = (progress_sum / total) if total else 0.0
+    avg_duration = (sum(completed_durations) / len(completed_durations)) if completed_durations else None
+    if running and running_eta_seconds is None and avg_duration:
+        running_eta_seconds = int(avg_duration)
+
+    total_eta_seconds: int | None = None
+    if running_eta_seconds is not None or avg_duration is not None:
+        total_eta_seconds = int(running_eta_seconds or 0)
+        if avg_duration is not None:
+            total_eta_seconds += int(avg_duration * queued)
+
+    total_eta_text = format_eta(total_eta_seconds)
+    return {
+        "total": total,
+        "completed": completed,
+        "running": running,
+        "queued": queued,
+        "failed": failed,
+        "stopped": stopped,
+        "cancelled": cancelled,
+        "percent_complete": percent_complete,
+        "total_eta_seconds": total_eta_seconds,
+        "total_eta_text": total_eta_text,
+    }
 
 
 async def get_events(db_path: str, job_id: str, limit: int = 200) -> list[dict[str, str]]:

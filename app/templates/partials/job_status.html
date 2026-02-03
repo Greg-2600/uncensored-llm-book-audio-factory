@@ -15,6 +15,10 @@
     </div>
   </div>
 
+  {% if eta_text %}
+    <div class="mt-4 text-sm text-slate-700">ETA: <span class="font-medium">{{ eta_text }}</span></div>
+  {% endif %}
+
   {% if job.error %}
     <div class="mt-4 text-sm text-red-700 bg-red-50 border border-red-200 rounded p-3">{{ job.error }}</div>
   {% endif %}

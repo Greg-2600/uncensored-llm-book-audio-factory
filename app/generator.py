@@ -167,9 +167,21 @@ async def run_job(
     max_chapters: int,
     timeout_seconds: float,
 ) -> None:
+    async def _should_abort() -> bool:
+        fresh = await db.get_job(db_path, job.id)
+        if fresh is None:
+            return True
+        if fresh.status in {"cancelled", "stopped"}:
+            await db.append_event(db_path, job.id, "info", f"Job {fresh.status}")
+            return True
+        return False
+
     try:
         await db.set_job_status(db_path, job.id, status="running", stage="starting", progress=0.02)
         await db.append_event(db_path, job.id, "info", "Job started")
+
+        if await _should_abort():
+            return
 
         out_dir = Path(data_dir) / job.id
         out_dir.mkdir(parents=True, exist_ok=True)
@@ -184,6 +196,9 @@ async def run_job(
             max_chapters=max_chapters,
             timeout_seconds=timeout_seconds,
         )
+
+        if await _should_abort():
+            return
 
         (out_dir / "outline.json").write_text(
             json.dumps(
@@ -213,6 +228,8 @@ async def run_job(
         chapter_summaries: list[str] = []
         total = max(1, len(outline.chapters))
         for idx, chapter in enumerate(outline.chapters, start=1):
+            if await _should_abort():
+                return
             await db.set_job_status(
                 db_path,
                 job.id,
@@ -230,6 +247,9 @@ async def run_job(
                 ollama_model=ollama_model,
                 timeout_seconds=timeout_seconds,
             )
+
+            if await _should_abort():
+                return
 
             (out_dir / f"chapter-{idx:02d}.md").write_text(chapter_md, encoding="utf-8")
             book_parts.append(chapter_md.strip() + "\n")

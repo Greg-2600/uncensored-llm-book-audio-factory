@@ -11,6 +11,7 @@ UVICORN_PID_FILE="$RUN_DIR/uvicorn.pid"
 REMOTE_HOST="192.168.1.248"
 LOCAL_PORT="${LOCAL_PORT:-11434}"
 REMOTE_PORT="11434"
+SKIP_TUNNEL="${SKIP_TUNNEL:-0}"
 
 load_env() {
   if [[ -f "$ROOT_DIR/.env" ]]; then
@@ -32,6 +33,10 @@ is_pid_running() {
 
 start_tunnel() {
   ensure_dirs
+  if [[ "$SKIP_TUNNEL" == "1" ]]; then
+    echo "Skipping SSH tunnel (SKIP_TUNNEL=1)"
+    return 0
+  fi
   if ss -ltn 2>/dev/null | awk '{print $4}' | grep -qE "(^|:)${LOCAL_PORT}$"; then
     echo "Local port ${LOCAL_PORT} is already in use."
     echo "Set LOCAL_PORT to a free port (e.g., LOCAL_PORT=11435) and retry."
@@ -73,7 +78,7 @@ start_app() {
   fi
 
   load_env
-  export OLLAMA_BASE_URL="${OLLAMA_BASE_URL:-http://127.0.0.1:11434}"
+  export OLLAMA_BASE_URL="${OLLAMA_BASE_URL:-http://127.0.0.1:${LOCAL_PORT}}"
 
   if [[ -f "$UVICORN_PID_FILE" ]]; then
     local pid

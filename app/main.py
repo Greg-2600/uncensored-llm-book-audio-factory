@@ -10,6 +10,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 
 from . import db
+from .eta import estimate_remaining_seconds, format_eta
 from .generator import run_job
 from .settings import settings
 
@@ -51,6 +52,8 @@ class JobRunner:
             job = await db.get_job(settings.db_path, job_id)
             if job is None:
                 continue
+            if job.status in {"cancelled", "stopped"}:
+                continue
 
             await run_job(
                 job=job,
@@ -82,11 +85,13 @@ async def on_shutdown() -> None:
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request) -> Response:
     jobs = await db.list_jobs(settings.db_path, limit=10)
+    queue_stats = await db.get_queue_stats(settings.db_path)
     return templates.TemplateResponse(
         "index.html",
         {
             "request": request,
             "jobs": jobs,
+            "queue_stats": queue_stats,
             "ollama_base_url": settings.ollama_base_url,
             "ollama_model": settings.ollama_model,
         },
@@ -104,10 +109,89 @@ async def create_job(topic: str = Form(...)) -> Response:
     return RedirectResponse(url=f"/jobs/{job.id}", status_code=303)
 
 
+@app.post("/jobs/{job_id}/cancel")
+async def cancel_job(job_id: str) -> Response:
+    job = await db.get_job(settings.db_path, job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job.status in {"completed", "failed", "cancelled"}:
+        raise HTTPException(status_code=400, detail="Job cannot be cancelled")
+    await db.set_job_status(settings.db_path, job.id, status="cancelled", stage="cancelled")
+    await db.append_event(settings.db_path, job.id, "info", "Job cancelled")
+    return RedirectResponse(url=f"/jobs/{job.id}", status_code=303)
+
+
+@app.post("/jobs/{job_id}/stop")
+async def stop_job(job_id: str) -> Response:
+    job = await db.get_job(settings.db_path, job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job.status not in {"running"}:
+        raise HTTPException(status_code=400, detail="Only running jobs can be stopped")
+    await db.set_job_status(settings.db_path, job.id, status="stopped", stage="stopped")
+    await db.append_event(settings.db_path, job.id, "info", "Job stopped")
+    return RedirectResponse(url=f"/jobs/{job.id}", status_code=303)
+
+
+@app.post("/jobs/{job_id}/resume")
+async def resume_job(job_id: str) -> Response:
+    job = await db.get_job(settings.db_path, job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job.status != "stopped":
+        raise HTTPException(status_code=400, detail="Only stopped jobs can be resumed")
+    await db.set_job_status(
+        settings.db_path,
+        job.id,
+        status="queued",
+        stage="queued",
+        progress=0.0,
+        error=None,
+        output_path=None,
+    )
+    await db.append_event(settings.db_path, job.id, "info", "Job resumed")
+    await runner.enqueue(job.id)
+    return RedirectResponse(url=f"/jobs/{job.id}", status_code=303)
+
+
+@app.post("/jobs/{job_id}/retry")
+async def retry_job(job_id: str) -> Response:
+    job = await db.get_job(settings.db_path, job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job.status != "failed":
+        raise HTTPException(status_code=400, detail="Only failed jobs can be retried")
+    await db.set_job_status(
+        settings.db_path,
+        job.id,
+        status="queued",
+        stage="queued",
+        progress=0.0,
+        error=None,
+        output_path=None,
+    )
+    await db.append_event(settings.db_path, job.id, "info", "Job retried")
+    await runner.enqueue(job.id)
+    return RedirectResponse(url=f"/jobs/{job.id}", status_code=303)
+
+
 @app.get("/jobs", response_class=HTMLResponse)
 async def jobs_page(request: Request) -> Response:
     jobs = await db.list_jobs(settings.db_path, limit=50)
-    return templates.TemplateResponse("jobs.html", {"request": request, "jobs": jobs})
+    queue_stats = await db.get_queue_stats(settings.db_path)
+    return templates.TemplateResponse(
+        "jobs.html",
+        {"request": request, "jobs": jobs, "queue_stats": queue_stats},
+    )
+
+
+@app.get("/partials/queue_status", response_class=HTMLResponse)
+async def queue_status_partial(request: Request) -> Response:
+    queue_stats = await db.get_queue_stats(settings.db_path)
+    return templates.TemplateResponse(
+        "partials/queue_status.html",
+        {"request": request, "queue_stats": queue_stats},
+    )
 
 
 @app.get("/jobs/{job_id}", response_class=HTMLResponse)
@@ -116,9 +200,13 @@ async def job_detail(request: Request, job_id: str) -> Response:
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
     events = await db.get_events(settings.db_path, job_id, limit=200)
+    eta_text = None
+    if job.status == "running" and job.progress > 0:
+        eta_seconds = estimate_remaining_seconds(created_at=job.created_at, progress=job.progress)
+        eta_text = format_eta(eta_seconds)
     return templates.TemplateResponse(
         "job_detail.html",
-        {"request": request, "job": job, "events": events},
+        {"request": request, "job": job, "events": events, "eta_text": eta_text},
     )
 
 
@@ -127,9 +215,13 @@ async def job_status_partial(request: Request, job_id: str) -> Response:
     job = await db.get_job(settings.db_path, job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
+    eta_text = None
+    if job.status == "running" and job.progress > 0:
+        eta_seconds = estimate_remaining_seconds(created_at=job.created_at, progress=job.progress)
+        eta_text = format_eta(eta_seconds)
     return templates.TemplateResponse(
         "partials/job_status.html",
-        {"request": request, "job": job},
+        {"request": request, "job": job, "eta_text": eta_text},
     )
 
 
@@ -160,4 +252,18 @@ async def download_book(job_id: str) -> Response:
         content=data,
         media_type="text/markdown; charset=utf-8",
         headers={"Content-Disposition": f"attachment; filename={path.name}"},
+    )
+
+
+@app.get("/library", response_class=HTMLResponse)
+async def library_page(request: Request) -> Response:
+    jobs = await db.list_completed_jobs(settings.db_path, limit=200)
+    return templates.TemplateResponse(
+        "library.html",
+        {
+            "request": request,
+            "jobs": jobs,
+            "ollama_base_url": settings.ollama_base_url,
+            "ollama_model": settings.ollama_model,
+        },
     )

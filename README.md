@@ -20,6 +20,10 @@ Open `http://localhost:8000`.
 
 - Jobs are persisted to SQLite at `data/app.db`.
 - Generated book output is written under `data/jobs/<job_id>/book.md`.
+- The Library page lists completed books at `/library`.
+- Running jobs show an ETA based on current progress.
+- Job controls: stop (`POST /jobs/{id}/stop`), cancel (`POST /jobs/{id}/cancel`), resume (`POST /jobs/{id}/resume`).
+- Retry failed jobs: `POST /jobs/{id}/retry`.
 
 ## Venv + Ollama SSH testing
 

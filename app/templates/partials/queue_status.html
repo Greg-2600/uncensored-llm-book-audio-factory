@@ -1,0 +1,29 @@
+<div class="bg-white rounded-lg shadow p-4"
+     hx-get="/partials/queue_status"
+     hx-trigger="load, every 2s"
+     hx-swap="outerHTML">
+  <div class="flex items-center justify-between">
+    <div class="text-sm text-slate-600">Queue progress</div>
+    <div class="text-sm font-medium">
+      {{ (queue_stats.percent_complete * 100) | round(1) }}%
+    </div>
+  </div>
+
+  <div class="mt-2 w-full bg-slate-100 rounded h-3">
+    <div class="bg-slate-900 h-3 rounded" style="width: {{ (queue_stats.percent_complete * 100) | round(1) }}%"></div>
+  </div>
+
+  <div class="mt-3 grid grid-cols-2 gap-2 text-xs text-slate-600">
+    <div>Total: <span class="font-medium text-slate-800">{{ queue_stats.total }}</span></div>
+    <div>Running: <span class="font-medium text-slate-800">{{ queue_stats.running }}</span></div>
+    <div>Queued: <span class="font-medium text-slate-800">{{ queue_stats.queued }}</span></div>
+    <div>Completed: <span class="font-medium text-slate-800">{{ queue_stats.completed }}</span></div>
+    <div>Failed: <span class="font-medium text-slate-800">{{ queue_stats.failed }}</span></div>
+    <div>Stopped: <span class="font-medium text-slate-800">{{ queue_stats.stopped }}</span></div>
+    <div>Cancelled: <span class="font-medium text-slate-800">{{ queue_stats.cancelled }}</span></div>
+  </div>
+
+  {% if queue_stats.total_eta_text %}
+    <div class="mt-3 text-xs text-slate-600">Total queue ETA: <span class="font-medium text-slate-800">{{ queue_stats.total_eta_text }}</span></div>
+  {% endif %}
+</div>
