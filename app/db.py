@@ -20,11 +20,13 @@ def _utc_now_iso() -> str:
 class Job:
     id: str
     topic: str
+    model: str
     status: str
     progress: float
     stage: str
     created_at: str
     updated_at: str
+    started_at: Optional[str]
     error: Optional[str]
     output_path: Optional[str]
 
@@ -37,11 +39,14 @@ async def init_db(db_path: str) -> None:
             CREATE TABLE IF NOT EXISTS jobs (
               id TEXT PRIMARY KEY,
               topic TEXT NOT NULL,
+                            model TEXT,
               status TEXT NOT NULL,
               progress REAL NOT NULL,
               stage TEXT NOT NULL,
               error TEXT,
               output_path TEXT,
+                            queue_position INTEGER,
+                            started_at TEXT,
               created_at TEXT NOT NULL,
               updated_at TEXT NOT NULL
             )
@@ -61,36 +66,94 @@ async def init_db(db_path: str) -> None:
         )
         await db.execute("CREATE INDEX IF NOT EXISTS idx_job_events_job_id ON job_events(job_id)")
         await db.commit()
+    await _ensure_queue_position(db_path)
+    await _ensure_model_column(db_path)
+    await _ensure_started_at_column(db_path)
 
 
-async def create_job(db_path: str, topic: str) -> Job:
+async def _ensure_queue_position(db_path: str) -> None:
+    async with aiosqlite.connect(db_path) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("PRAGMA table_info(jobs)") as cur:
+            columns = [row["name"] for row in await cur.fetchall()]
+
+        if "queue_position" not in columns:
+            await db.execute("ALTER TABLE jobs ADD COLUMN queue_position INTEGER")
+            await db.commit()
+
+        await db.execute(
+            """
+            WITH ordered AS (
+              SELECT id, row_number() OVER (ORDER BY created_at ASC) AS rn
+              FROM jobs
+              WHERE queue_position IS NULL
+            )
+            UPDATE jobs
+            SET queue_position = (SELECT rn FROM ordered WHERE ordered.id = jobs.id)
+            WHERE queue_position IS NULL
+            """
+        )
+        await db.commit()
+
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_jobs_queue_position ON jobs(queue_position)")
+        await db.commit()
+
+async def _ensure_model_column(db_path: str) -> None:
+    async with aiosqlite.connect(db_path) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("PRAGMA table_info(jobs)") as cur:
+            columns = [row["name"] for row in await cur.fetchall()]
+        if "model" not in columns:
+            await db.execute("ALTER TABLE jobs ADD COLUMN model TEXT")
+            await db.commit()
+
+
+async def _ensure_started_at_column(db_path: str) -> None:
+    async with aiosqlite.connect(db_path) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("PRAGMA table_info(jobs)") as cur:
+            columns = [row["name"] for row in await cur.fetchall()]
+        if "started_at" not in columns:
+            await db.execute("ALTER TABLE jobs ADD COLUMN started_at TEXT")
+            await db.commit()
+
+
+async def create_job(db_path: str, topic: str, model: str) -> Job:
     job_id = str(uuid.uuid4())
     now = _utc_now_iso()
+    async with aiosqlite.connect(db_path) as db:
+        async with db.execute("SELECT COALESCE(MAX(queue_position), 0) FROM jobs") as cur:
+            row = await cur.fetchone()
+            next_pos = int(row[0] or 0) + 1
     job = Job(
         id=job_id,
         topic=topic.strip(),
+        model=model,
         status="queued",
         progress=0.0,
         stage="queued",
         created_at=now,
         updated_at=now,
+        started_at=None,
         error=None,
         output_path=None,
     )
     async with aiosqlite.connect(db_path) as db:
         await db.execute(
             """
-            INSERT INTO jobs (id, topic, status, progress, stage, error, output_path, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO jobs (id, topic, model, status, progress, stage, error, output_path, queue_position, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 job.id,
                 job.topic,
+                job.model,
                 job.status,
                 job.progress,
                 job.stage,
                 job.error,
                 job.output_path,
+                next_pos,
                 job.created_at,
                 job.updated_at,
             ),
@@ -114,6 +177,9 @@ async def set_job_status(
     if status is not None:
         fields.append("status = ?")
         values.append(status)
+        if status == "running":
+            fields.append("started_at = COALESCE(started_at, ?)")
+            values.append(_utc_now_iso())
     if stage is not None:
         fields.append("stage = ?")
         values.append(stage)
@@ -157,6 +223,7 @@ async def get_job(db_path: str, job_id: str) -> Optional[Job]:
             return Job(
                 id=row["id"],
                 topic=row["topic"],
+                model=row["model"] or "",
                 status=row["status"],
                 progress=float(row["progress"]),
                 stage=row["stage"],
@@ -164,6 +231,7 @@ async def get_job(db_path: str, job_id: str) -> Optional[Job]:
                 output_path=row["output_path"],
                 created_at=row["created_at"],
                 updated_at=row["updated_at"],
+                started_at=row["started_at"],
             )
 
 
@@ -171,7 +239,18 @@ async def list_jobs(db_path: str, limit: int = 50) -> list[Job]:
     async with aiosqlite.connect(db_path) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
-            "SELECT * FROM jobs ORDER BY created_at DESC LIMIT ?",
+                        """
+                        SELECT * FROM jobs
+                        ORDER BY
+                            CASE status
+                                WHEN 'running' THEN 0
+                                WHEN 'queued' THEN 1
+                                ELSE 2
+                            END,
+                            queue_position ASC,
+                            updated_at DESC
+                        LIMIT ?
+                        """,
             (limit,),
         ) as cur:
             rows = await cur.fetchall()
@@ -179,6 +258,7 @@ async def list_jobs(db_path: str, limit: int = 50) -> list[Job]:
                 Job(
                     id=row["id"],
                     topic=row["topic"],
+                    model=row["model"] or "",
                     status=row["status"],
                     progress=float(row["progress"]),
                     stage=row["stage"],
@@ -186,9 +266,85 @@ async def list_jobs(db_path: str, limit: int = 50) -> list[Job]:
                     output_path=row["output_path"],
                     created_at=row["created_at"],
                     updated_at=row["updated_at"],
+                    started_at=row["started_at"],
                 )
                 for row in rows
             ]
+
+
+async def get_next_queued_job(db_path: str) -> Optional[Job]:
+    async with aiosqlite.connect(db_path) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            """
+            SELECT * FROM jobs
+            WHERE status = 'queued'
+            ORDER BY queue_position ASC
+            LIMIT 1
+            """
+        ) as cur:
+            row = await cur.fetchone()
+            if row is None:
+                return None
+            return Job(
+                id=row["id"],
+                topic=row["topic"],
+                model=row["model"] or "",
+                status=row["status"],
+                progress=float(row["progress"]),
+                stage=row["stage"],
+                error=row["error"],
+                output_path=row["output_path"],
+                created_at=row["created_at"],
+                updated_at=row["updated_at"],
+                started_at=row["started_at"],
+            )
+
+
+async def move_job(db_path: str, job_id: str, direction: str) -> None:
+    async with aiosqlite.connect(db_path) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT id, queue_position FROM jobs WHERE id = ?", (job_id,)) as cur:
+            row = await cur.fetchone()
+            if row is None:
+                return
+            current_pos = row["queue_position"]
+            if current_pos is None:
+                return
+
+        if direction == "up":
+            comparator = "<"
+            order = "DESC"
+        else:
+            comparator = ">"
+            order = "ASC"
+
+        async with db.execute(
+            f"""
+            SELECT id, queue_position FROM jobs
+            WHERE status = 'queued'
+              AND queue_position {comparator} ?
+            ORDER BY queue_position {order}
+            LIMIT 1
+            """,
+            (current_pos,),
+        ) as cur:
+            neighbor = await cur.fetchone()
+            if neighbor is None:
+                return
+
+        neighbor_id = neighbor["id"]
+        neighbor_pos = neighbor["queue_position"]
+
+        await db.execute(
+            "UPDATE jobs SET queue_position = ? WHERE id = ?",
+            (neighbor_pos, job_id),
+        )
+        await db.execute(
+            "UPDATE jobs SET queue_position = ? WHERE id = ?",
+            (current_pos, neighbor_id),
+        )
+        await db.commit()
 
 
 async def list_completed_jobs(db_path: str, limit: int = 200) -> list[Job]:
@@ -208,6 +364,7 @@ async def list_completed_jobs(db_path: str, limit: int = 200) -> list[Job]:
                 Job(
                     id=row["id"],
                     topic=row["topic"],
+                    model=row["model"] or "",
                     status=row["status"],
                     progress=float(row["progress"]),
                     stage=row["stage"],
@@ -215,15 +372,62 @@ async def list_completed_jobs(db_path: str, limit: int = 200) -> list[Job]:
                     output_path=row["output_path"],
                     created_at=row["created_at"],
                     updated_at=row["updated_at"],
+                    started_at=row["started_at"],
                 )
                 for row in rows
             ]
 
 
+async def list_recommended_topics(db_path: str, limit: int = 8) -> list[str]:
+    async with aiosqlite.connect(db_path) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            """
+            SELECT topic, COUNT(*) AS cnt, MAX(updated_at) AS last_seen
+            FROM jobs
+            WHERE topic IS NOT NULL AND TRIM(topic) <> ''
+            GROUP BY topic
+            ORDER BY cnt DESC, last_seen DESC
+            LIMIT ?
+            """,
+            (limit,),
+        ) as cur:
+            rows = await cur.fetchall()
+            return [str(row["topic"]) for row in rows]
+
+
+async def list_recent_topics(db_path: str, limit: int = 12) -> list[str]:
+    async with aiosqlite.connect(db_path) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            """
+            SELECT topic
+            FROM jobs
+            WHERE topic IS NOT NULL AND TRIM(topic) <> ''
+            ORDER BY updated_at DESC
+            LIMIT ?
+            """,
+            (limit,),
+        ) as cur:
+            rows = await cur.fetchall()
+            seen: set[str] = set()
+            topics: list[str] = []
+            for row in rows:
+                topic = str(row["topic"]).strip()
+                if not topic:
+                    continue
+                key = topic.lower()
+                if key in seen:
+                    continue
+                seen.add(key)
+                topics.append(topic)
+            return topics
+
+
 async def get_queue_stats(db_path: str) -> dict[str, float | int | str | None]:
     async with aiosqlite.connect(db_path) as db:
         db.row_factory = aiosqlite.Row
-        async with db.execute("SELECT status, progress, created_at, updated_at FROM jobs") as cur:
+        async with db.execute("SELECT status, progress, created_at, updated_at, started_at FROM jobs") as cur:
             rows = await cur.fetchall()
 
     total = len(rows)
@@ -257,7 +461,11 @@ async def get_queue_stats(db_path: str) -> dict[str, float | int | str | None]:
             running += 1
             progress_sum += max(0.0, min(progress, 1.0))
             if running_eta_seconds is None:
-                eta = estimate_remaining_seconds(created_at=row["created_at"], progress=progress)
+                eta = estimate_remaining_seconds(
+                    created_at=row["created_at"],
+                    started_at=row["started_at"],
+                    progress=progress,
+                )
                 if eta is not None:
                     running_eta_seconds = eta
         elif status == "failed":
@@ -284,7 +492,7 @@ async def get_queue_stats(db_path: str) -> dict[str, float | int | str | None]:
         if avg_duration is not None:
             total_eta_seconds += int(avg_duration * queued)
 
-    total_eta_text = format_eta(total_eta_seconds)
+    total_eta_text = format_eta(total_eta_seconds, include_seconds=False)
     return {
         "total": total,
         "completed": completed,

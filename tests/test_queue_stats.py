@@ -18,10 +18,10 @@ def temp_db_path(tmp_path: Path) -> str:
 def test_get_queue_stats_mixed_states(temp_db_path: str) -> None:
     _run(db.init_db(temp_db_path))
 
-    job1 = _run(db.create_job(temp_db_path, "Topic 1"))
-    job2 = _run(db.create_job(temp_db_path, "Topic 2"))
-    job3 = _run(db.create_job(temp_db_path, "Topic 3"))
-    job4 = _run(db.create_job(temp_db_path, "Topic 4"))
+    job1 = _run(db.create_job(temp_db_path, "Topic 1", "test-model"))
+    job2 = _run(db.create_job(temp_db_path, "Topic 2", "test-model"))
+    job3 = _run(db.create_job(temp_db_path, "Topic 3", "test-model"))
+    job4 = _run(db.create_job(temp_db_path, "Topic 4", "test-model"))
 
     _run(db.set_job_status(temp_db_path, job1.id, status="completed", progress=1.0))
     _run(db.set_job_status(temp_db_path, job2.id, status="running", progress=0.5))

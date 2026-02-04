@@ -16,7 +16,7 @@ def test_queue_status_partial_renders(tmp_path: Path) -> None:
     db_path = str(tmp_path / "test.db")
     _run(db.init_db(db_path))
 
-    job = _run(db.create_job(db_path, "Topic 1"))
+    job = _run(db.create_job(db_path, "Topic 1", "test-model"))
     _run(db.set_job_status(db_path, job.id, status="completed", progress=1.0))
 
     original_db_path = settings.db_path

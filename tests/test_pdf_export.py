@@ -16,7 +16,7 @@ def test_pdf_download_generates_file(tmp_path: Path, monkeypatch) -> None:
     db_path = str(tmp_path / "test.db")
     _run(db.init_db(db_path))
 
-    job = _run(db.create_job(db_path, "Topic 1"))
+    job = _run(db.create_job(db_path, "Topic 1", "test-model"))
     md_path = tmp_path / "My Book.md"
     md_path.write_text("# Test\n\nHello", encoding="utf-8")
     _run(

@@ -20,5 +20,8 @@ class Settings(BaseSettings):
     max_chapters: int = 12
     request_timeout_seconds: float = 600.0
 
+    openai_api_key: str | None = None
+    openai_tts_model: str = "gpt-4o-mini-tts"
+
 
 settings = Settings()

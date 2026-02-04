@@ -10,6 +10,31 @@ class OllamaError(RuntimeError):
     pass
 
 
+async def list_models(
+    *,
+    base_url: str,
+    timeout_seconds: float = 10.0,
+) -> list[str]:
+    url = base_url.rstrip("/") + "/api/tags"
+    timeout = httpx.Timeout(timeout_seconds, connect=5.0)
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        try:
+            resp = await client.get(url)
+            resp.raise_for_status()
+            data = resp.json()
+        except httpx.HTTPError as e:
+            raise OllamaError(f"Ollama HTTP error: {e}") from e
+        except ValueError as e:  # JSON decode
+            raise OllamaError(f"Ollama JSON error: {e}") from e
+
+    models = []
+    for item in data.get("models", []):
+        name = item.get("name")
+        if name:
+            models.append(str(name))
+    return models
+
+
 async def stream_generate(
     *,
     base_url: str,

@@ -1,13 +1,13 @@
 {% extends "base.html" %}
 
 {% block content %}
-  <h1 class="text-2xl font-semibold">Book queue</h1>
+  <h1 class="text-2xl font-semibold text-slate-100">Book queue</h1>
 
   <div class="mt-4">
     {% include "partials/queue_status.html" %}
   </div>
 
-  <div class="mt-4 bg-white rounded-lg shadow">
+  <div class="mt-4 bg-white rounded-2xl shadow text-slate-900">
     <table class="w-full text-sm">
       <thead class="text-left text-slate-600">
         <tr class="border-b">
@@ -22,7 +22,19 @@
         {% for job in jobs %}
           <tr class="border-b last:border-0 hover:bg-slate-50">
             <td class="p-3"><a class="hover:underline" href="/jobs/{{ job.id }}">{{ job.topic }}</a></td>
-            <td class="p-3">{{ job.status }} ({{ job.stage }})</td>
+            <td class="p-3">
+              <span class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs
+                {% if job.status == 'running' %}bg-emerald-100 text-emerald-700
+                {% elif job.status == 'completed' %}bg-slate-200 text-slate-800
+                {% elif job.status == 'failed' %}bg-rose-100 text-rose-700
+                {% elif job.status == 'cancelled' %}bg-amber-100 text-amber-700
+                {% elif job.status == 'stopped' %}bg-indigo-100 text-indigo-700
+                {% else %}bg-slate-100 text-slate-700{% endif %}
+              ">
+                {{ job.status }}
+              </span>
+              <span class="text-xs text-slate-500">· {{ job.stage }}</span>
+            </td>
             <td class="p-3">{{ (job.progress * 100) | round(1) }}%</td>
             <td class="p-3">{{ job.created_at }}</td>
             <td class="p-3">
@@ -48,6 +60,17 @@
                 {% if job.status in ["failed", "cancelled"] %}
                   <form method="post" action="/jobs/{{ job.id }}/retry">
                     <button class="text-xs bg-indigo-600 text-white rounded px-2 py-1 hover:bg-indigo-700" type="submit">Retry</button>
+                  </form>
+                {% endif %}
+
+                {% if job.status == "queued" %}
+                  <form method="post" action="/jobs/{{ job.id }}/move">
+                    <input type="hidden" name="direction" value="up" />
+                    <button class="text-xs bg-slate-200 text-slate-800 rounded px-2 py-1 hover:bg-slate-300" type="submit">Up</button>
+                  </form>
+                  <form method="post" action="/jobs/{{ job.id }}/move">
+                    <input type="hidden" name="direction" value="down" />
+                    <button class="text-xs bg-slate-200 text-slate-800 rounded px-2 py-1 hover:bg-slate-300" type="submit">Down</button>
                   </form>
                 {% endif %}
 

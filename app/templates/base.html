@@ -7,20 +7,20 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/htmx.org@1.9.12"></script>
   </head>
-  <body class="bg-slate-50 text-slate-900">
-    <div class="max-w-5xl mx-auto px-4 py-6">
+  <body class="bg-slate-950 text-slate-100">
+    <div class="max-w-6xl mx-auto px-4 py-8">
       <div class="flex items-center justify-between">
-        <a href="/" class="text-xl font-semibold">Book Generator</a>
-        <nav class="text-sm space-x-4">
-          <a class="text-slate-700 hover:text-slate-900" href="/jobs">Queue</a>
-          <a class="text-slate-700 hover:text-slate-900" href="/library">Library</a>
+        <a href="/" class="text-xl font-semibold tracking-tight">Book Generator</a>
+        <nav class="text-sm space-x-2">
+          <a class="px-3 py-1.5 rounded-full bg-slate-800 text-slate-100 hover:bg-slate-700" href="/jobs">Queue</a>
+          <a class="px-3 py-1.5 rounded-full bg-slate-800 text-slate-100 hover:bg-slate-700" href="/library">Library</a>
         </nav>
       </div>
       <div class="mt-6">
         {% block content %}{% endblock %}
       </div>
-      <div class="mt-10 text-xs text-slate-500">
-        Uses Ollama at <span class="font-mono">{{ ollama_base_url or "" }}</span> model <span class="font-mono">{{ ollama_model or "" }}</span>
+      <div class="mt-10 text-xs text-slate-400">
+        Uses Ollama at <span class="font-mono text-slate-200">{{ ollama_base_url or "" }}</span> model <span class="font-mono text-slate-200">{{ ollama_model or "" }}</span>
       </div>
     </div>
   </body>

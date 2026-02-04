@@ -25,8 +25,11 @@ Open `http://localhost:8000`.
 - Job controls: stop (`POST /jobs/{id}/stop`), cancel (`POST /jobs/{id}/cancel`), resume (`POST /jobs/{id}/resume`).
 - Retry failed jobs: `POST /jobs/{id}/retry`.
 - Delete jobs: `POST /jobs/{id}/delete` (not allowed for running jobs).
+- Queue ordering: use Up/Down controls on the Queue page for queued jobs.
+- Recommended topics use the Ollama model and recent job topics to suggest new ideas.
 - PDF export: `GET /jobs/{id}/download.pdf` (uses `weasyprint` with `xhtml2pdf` fallback).
 - Rendered reader: `GET /jobs/{id}/read` (opens formatted HTML in a new tab).
+- Read aloud: `POST /jobs/{id}/tts` (requires `OPENAI_API_KEY`, uses `openai_tts_model`).
 
 ## Venv + Ollama SSH testing
 

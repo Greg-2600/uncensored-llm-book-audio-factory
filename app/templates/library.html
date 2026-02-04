@@ -1,37 +1,45 @@
 {% extends "base.html" %}
 
 {% block content %}
-  <h1 class="text-2xl font-semibold">Library</h1>
-  <p class="mt-2 text-slate-600">All completed books are listed here.</p>
+  <div class="flex items-center justify-between gap-4">
+    <div>
+      <h1 class="text-2xl font-semibold text-slate-100">Library</h1>
+      <p class="mt-2 text-slate-400">All completed books are listed here.</p>
+    </div>
+  </div>
 
-  <div class="mt-4 bg-white rounded-lg shadow">
-    <table class="w-full text-sm">
-      <thead class="text-left text-slate-600">
-        <tr class="border-b">
-          <th class="p-3">Topic</th>
-          <th class="p-3">Updated</th>
-          <th class="p-3">Read</th>
-          <th class="p-3">Download</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for job in jobs %}
-          <tr class="border-b last:border-0 hover:bg-slate-50">
-            <td class="p-3">
-              <a class="hover:underline" href="/jobs/{{ job.id }}">{{ job.topic }}</a>
-            </td>
-            <td class="p-3">{{ job.updated_at }}</td>
-            <td class="p-3">
-              <a class="text-slate-900 hover:underline" href="/jobs/{{ job.id }}/read" target="_blank" rel="noreferrer">Read rendered</a>
-            </td>
-            <td class="p-3">
-              <a class="text-slate-900 hover:underline" href="/jobs/{{ job.id }}/download.pdf">Download PDF</a>
-            </td>
+  <div class="mt-6 rounded-2xl border border-slate-800 bg-slate-900/80 shadow-xl shadow-black/20">
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead class="text-left text-slate-400">
+          <tr class="border-b border-slate-800">
+            <th class="p-4">Topic</th>
+            <th class="p-4">Updated</th>
+            <th class="p-4">Read</th>
+            <th class="p-4">Download</th>
           </tr>
-        {% else %}
-          <tr><td class="p-3" colspan="3">No completed books yet.</td></tr>
-        {% endfor %}
-      </tbody>
-    </table>
+        </thead>
+        <tbody class="text-slate-200">
+          {% for job in jobs %}
+            <tr class="border-b border-slate-800 last:border-0 hover:bg-slate-800/60">
+              <td class="p-4 font-medium">
+                <a class="text-slate-100 hover:text-indigo-300 hover:underline" href="/jobs/{{ job.id }}">{{ job.topic }}</a>
+              </td>
+              <td class="p-4 text-slate-400">{{ job.updated_at }}</td>
+              <td class="p-4">
+                <a class="inline-flex items-center gap-2 rounded-full bg-indigo-500/15 px-3 py-1 text-indigo-300 hover:bg-indigo-500/25" href="/jobs/{{ job.id }}/read" target="_blank" rel="noreferrer">Read rendered</a>
+              </td>
+              <td class="p-4">
+                <a class="inline-flex items-center gap-2 rounded-full bg-emerald-500/15 px-3 py-1 text-emerald-300 hover:bg-emerald-500/25" href="/jobs/{{ job.id }}/download.pdf">Download PDF</a>
+              </td>
+            </tr>
+          {% else %}
+            <tr>
+              <td class="p-6 text-slate-400" colspan="4">No completed books yet.</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
   </div>
 {% endblock %}

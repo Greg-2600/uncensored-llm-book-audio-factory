@@ -14,4 +14,62 @@
   <div class="mt-6 bg-white rounded-lg shadow p-6 prose prose-slate max-w-none">
     {{ html_body | safe }}
   </div>
+
+  <div class="mt-6 bg-white rounded-lg shadow p-4 text-slate-900">
+    <div class="text-sm font-medium">Read aloud</div>
+    <div class="mt-3 flex flex-wrap items-center gap-3">
+      <label class="text-sm">Voice
+        <select id="tts-voice" class="ml-2 border rounded px-2 py-1 text-sm">
+          <option value="alloy">alloy</option>
+          <option value="ash">ash</option>
+          <option value="ballad">ballad</option>
+          <option value="coral">coral</option>
+          <option value="echo">echo</option>
+          <option value="fable">fable</option>
+          <option value="onyx">onyx</option>
+          <option value="nova">nova</option>
+          <option value="sage">sage</option>
+          <option value="shimmer">shimmer</option>
+        </select>
+      </label>
+      <label class="text-sm">Speed
+        <input id="tts-speed" type="number" min="0.5" max="2.0" step="0.1" value="1.0" class="ml-2 w-20 border rounded px-2 py-1 text-sm" />
+      </label>
+      <button id="tts-play" class="bg-slate-900 text-white rounded px-3 py-2 text-sm hover:bg-slate-800" type="button">Generate & Play</button>
+      <span id="tts-status" class="text-xs text-slate-500"></span>
+    </div>
+    <audio id="tts-audio" class="mt-3 w-full" controls></audio>
+  </div>
+
+  <script>
+    const playBtn = document.getElementById('tts-play');
+    const audioEl = document.getElementById('tts-audio');
+    const statusEl = document.getElementById('tts-status');
+    playBtn.addEventListener('click', async () => {
+      statusEl.textContent = 'Generating audio...';
+      const voice = document.getElementById('tts-voice').value;
+      const speed = document.getElementById('tts-speed').value;
+      const params = new URLSearchParams();
+      params.append('voice', voice);
+      params.append('speed', speed);
+      try {
+        const resp = await fetch(`/jobs/{{ job.id }}/tts`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: params.toString()
+        });
+        if (!resp.ok) {
+          const data = await resp.json();
+          statusEl.textContent = data.detail || 'Failed to generate audio.';
+          return;
+        }
+        const blob = await resp.blob();
+        audioEl.src = URL.createObjectURL(blob);
+        await audioEl.play();
+        statusEl.textContent = '';
+      } catch (err) {
+        statusEl.textContent = 'Failed to generate audio.';
+      }
+    });
+  </script>
 {% endblock %}

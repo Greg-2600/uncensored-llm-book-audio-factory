@@ -112,4 +112,4 @@ def test_queue_eta_calculation(tmp_path):
     assert stats["running"] == 1
     assert stats["completed"] == 1
     assert stats["total_eta_seconds"] == 3000
-    assert stats["total_eta_text"] == "50m 0s"
+    assert stats["total_eta_text"] == "50m"

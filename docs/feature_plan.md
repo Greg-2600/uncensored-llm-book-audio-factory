@@ -221,12 +221,13 @@ This document lists implementation TODOs for each requested feature. Each list i
 
 **Implementation TODOs**
 - Store historical topics and basic metadata (success, timestamp).
-- Implement a simple recommender (e.g., most popular, related keywords).
+- Generate recommendations via Ollama using recent job topics as input.
 - Add recommendations to home page (click-to-fill).
 
 **Tests**
 - Unit tests for recommendation logic.
 - UI test for recommendation list display.
+- Integration test for Ollama recommendation response handling.
 
 **Docs**
-- Document how recommendations are generated.
+- Document how recommendations are generated (Ollama + recent topics).

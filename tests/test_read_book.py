@@ -16,7 +16,7 @@ def test_read_book_renders_html(tmp_path: Path) -> None:
     db_path = str(tmp_path / "test.db")
     _run(db.init_db(db_path))
 
-    job = _run(db.create_job(db_path, "Topic 1"))
+    job = _run(db.create_job(db_path, "Topic 1", "test-model"))
     md_path = tmp_path / "My Book.md"
     md_path.write_text("# Title\n\nHello", encoding="utf-8")
     _run(

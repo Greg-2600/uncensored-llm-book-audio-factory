@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 from pathlib import Path
 from typing import Optional
@@ -12,6 +13,8 @@ from fastapi.templating import Jinja2Templates
 from . import db
 from .eta import estimate_remaining_seconds, format_eta
 from .generator import run_job
+from .ollama_client import generate_text, list_models
+from .openai_tts import OpenAITTSError, synthesize_speech
 from .pdf_export import render_markdown_to_pdf
 from .settings import settings
 
@@ -25,6 +28,7 @@ class JobRunner:
         self.queue: asyncio.Queue[str] = asyncio.Queue()
         self._task: Optional[asyncio.Task[None]] = None
         self._stop = asyncio.Event()
+        self._wake = asyncio.Event()
 
     async def start(self) -> None:
         if self._task is None:
@@ -42,16 +46,17 @@ class JobRunner:
 
     async def enqueue(self, job_id: str) -> None:
         await self.queue.put(job_id)
+        self._wake.set()
 
     async def _run_loop(self) -> None:
         while not self._stop.is_set():
-            try:
-                job_id = await asyncio.wait_for(self.queue.get(), timeout=0.5)
-            except asyncio.TimeoutError:
-                continue
-
-            job = await db.get_job(settings.db_path, job_id)
+            job = await db.get_next_queued_job(settings.db_path)
             if job is None:
+                try:
+                    await asyncio.wait_for(self._wake.wait(), timeout=1.0)
+                    self._wake.clear()
+                except asyncio.TimeoutError:
+                    continue
                 continue
             if job.status in {"cancelled", "stopped"}:
                 continue
@@ -61,7 +66,7 @@ class JobRunner:
                 db_path=settings.db_path,
                 data_dir=settings.data_dir,
                 ollama_base_url=settings.ollama_base_url,
-                ollama_model=settings.ollama_model,
+                ollama_model=job.model or settings.ollama_model,
                 max_chapters=settings.max_chapters,
                 timeout_seconds=settings.request_timeout_seconds,
             )
@@ -69,6 +74,71 @@ class JobRunner:
 
 app = FastAPI(title="Book Generator")
 runner = JobRunner()
+
+
+def _extract_json_array(text: str) -> list[str]:
+    cleaned = text.strip()
+    if cleaned.startswith("```"):
+        cleaned = cleaned.strip("`")
+        if cleaned.lower().startswith("json"):
+            cleaned = cleaned[4:].strip()
+    start = cleaned.find("[")
+    end = cleaned.rfind("]")
+    if start == -1 or end == -1 or end <= start:
+        raise ValueError("Model did not return JSON array")
+    data = json.loads(cleaned[start : end + 1])
+    if not isinstance(data, list):
+        raise ValueError("JSON response was not a list")
+    topics: list[str] = []
+    for item in data:
+        if isinstance(item, str) and item.strip():
+            topics.append(item.strip())
+    return topics
+
+
+async def recommend_topics_from_recent(
+    *,
+    recent_topics: list[str],
+    limit: int,
+    ollama_base_url: str,
+    ollama_model: str,
+    timeout_seconds: float,
+) -> list[str]:
+    if not recent_topics:
+        return []
+    prompt = (
+        "You are helping recommend fresh, high-quality book topics.\n"
+        "Use the recent topics as inspiration only.\n\n"
+        f"Recent topics: {json.dumps(recent_topics, ensure_ascii=False)}\n\n"
+        "Return ONLY valid JSON as an array of strings.\n"
+        f"Return exactly {limit} items.\n"
+        "Do NOT repeat any recent topics.\n"
+        "Keep topics concise and specific."
+    )
+    text = await generate_text(
+        base_url=ollama_base_url,
+        model=ollama_model,
+        prompt=prompt,
+        system="You return concise JSON arrays only.",
+        options={"temperature": 0.7, "top_p": 0.9},
+        timeout_seconds=timeout_seconds,
+    )
+    try:
+        topics = _extract_json_array(text)
+    except (ValueError, json.JSONDecodeError):
+        lines = [line.strip("-• \t") for line in text.splitlines() if line.strip()]
+        topics = [line for line in lines if line]
+    deduped: list[str] = []
+    seen: set[str] = set(t.lower() for t in recent_topics)
+    for topic in topics:
+        key = topic.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(topic)
+        if len(deduped) >= limit:
+            break
+    return deduped
 
 
 @app.on_event("startup")
@@ -87,12 +157,33 @@ async def on_shutdown() -> None:
 async def index(request: Request) -> Response:
     jobs = await db.list_jobs(settings.db_path, limit=10)
     queue_stats = await db.get_queue_stats(settings.db_path)
+    recent_topics = await db.list_recent_topics(settings.db_path, limit=25)
+    recommended_topics: list[str] = []
+    if recent_topics:
+        try:
+            recommended_topics = await recommend_topics_from_recent(
+                recent_topics=recent_topics,
+                limit=8,
+                ollama_base_url=settings.ollama_base_url,
+                ollama_model=settings.ollama_model,
+                timeout_seconds=min(60.0, settings.request_timeout_seconds),
+            )
+        except Exception:
+            recommended_topics = []
+    try:
+        models = await list_models(base_url=settings.ollama_base_url)
+    except Exception:
+        models = []
+    if not models:
+        models = [settings.ollama_model]
     return templates.TemplateResponse(
         "index.html",
         {
             "request": request,
             "jobs": jobs,
             "queue_stats": queue_stats,
+            "recommended_topics": recommended_topics,
+            "models": models,
             "ollama_base_url": settings.ollama_base_url,
             "ollama_model": settings.ollama_model,
         },
@@ -100,12 +191,18 @@ async def index(request: Request) -> Response:
 
 
 @app.post("/jobs")
-async def create_job(topic: str = Form(...)) -> Response:
+async def create_job(topic: str = Form(...), model: str = Form(default="")) -> Response:
     topic = (topic or "").strip()
     if len(topic) < 3:
         raise HTTPException(status_code=400, detail="Topic is too short")
-    job = await db.create_job(settings.db_path, topic)
-    await db.append_event(settings.db_path, job.id, "info", f"Queued topic: {topic}")
+    selected_model = (model or settings.ollama_model).strip() or settings.ollama_model
+    job = await db.create_job(settings.db_path, topic, selected_model)
+    await db.append_event(
+        settings.db_path,
+        job.id,
+        "info",
+        f"Queued topic: {topic} (model: {selected_model})",
+    )
     await runner.enqueue(job.id)
     return RedirectResponse(url=f"/jobs/{job.id}", status_code=303)
 
@@ -184,6 +281,19 @@ async def delete_job(job_id: str) -> Response:
     if job.status == "running":
         raise HTTPException(status_code=400, detail="Stop or cancel running job before delete")
     await db.delete_job(settings.db_path, job.id)
+    return RedirectResponse(url="/jobs", status_code=303)
+
+
+@app.post("/jobs/{job_id}/move")
+async def move_job(job_id: str, direction: str = Form(...)) -> Response:
+    job = await db.get_job(settings.db_path, job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job.status != "queued":
+        raise HTTPException(status_code=400, detail="Only queued jobs can be moved")
+    if direction not in {"up", "down"}:
+        raise HTTPException(status_code=400, detail="Invalid direction")
+    await db.move_job(settings.db_path, job.id, direction)
     return RedirectResponse(url="/jobs", status_code=303)
 
 
@@ -293,6 +403,44 @@ async def read_book(job_id: str) -> Response:
             "html_body": html_body,
         },
     )
+
+
+@app.post("/jobs/{job_id}/tts")
+async def read_book_tts(
+    job_id: str,
+    voice: str = Form(default="alloy"),
+    speed: float = Form(default=1.0),
+) -> Response:
+    if not settings.openai_api_key:
+        raise HTTPException(status_code=400, detail="OPENAI_API_KEY is not configured")
+
+    job = await db.get_job(settings.db_path, job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job.status != "completed" or not job.output_path:
+        raise HTTPException(status_code=400, detail="Job not completed")
+
+    md_path = Path(job.output_path)
+    if not md_path.exists():
+        raise HTTPException(status_code=404, detail="Output file missing")
+
+    text = md_path.read_text(encoding="utf-8")
+    if not text.strip():
+        raise HTTPException(status_code=400, detail="Book is empty")
+
+    speed = max(0.5, min(2.0, speed))
+    try:
+        audio = await synthesize_speech(
+            api_key=settings.openai_api_key,
+            model=settings.openai_tts_model,
+            text=text,
+            voice=voice,
+            speed=speed,
+        )
+    except OpenAITTSError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    return Response(content=audio, media_type="audio/mpeg")
 
 
 @app.get("/jobs/{job_id}/download.pdf")
