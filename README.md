@@ -81,10 +81,6 @@ Local TTS notes:
 - Voices are model-specific speaker IDs (e.g., `p225`).
 - `ffmpeg` is required for MP3/M4B output.
 
-## Security and repo hygiene
-
-- `data/` and `.env` are ignored via `.gitignore` and should never be committed.
-- Keep real secrets only in `.env`; commit changes to `.env.example` instead.
 
 ## Linting and formatting (Ruff)
 
