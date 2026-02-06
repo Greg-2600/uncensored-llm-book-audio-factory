@@ -3,24 +3,34 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>{{ title or "Book Generator" }}</title>
+    <meta http-equiv="refresh" content="120" />
+    <title>{{ title or "Uncensored LLM Book + Audio Factory" }}</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+    {% block extra_head %}{% endblock %}
   </head>
-  <body class="bg-slate-950 text-slate-100">
-    <div class="max-w-6xl mx-auto px-4 py-8">
-      <div class="flex items-center justify-between">
-        <a href="/" class="text-xl font-semibold tracking-tight">Book Generator</a>
-        <nav class="text-sm space-x-2">
-          <a class="px-3 py-1.5 rounded-full bg-slate-800 text-slate-100 hover:bg-slate-700" href="/jobs">Queue</a>
-          <a class="px-3 py-1.5 rounded-full bg-slate-800 text-slate-100 hover:bg-slate-700" href="/library">Library</a>
-        </nav>
-      </div>
-      <div class="mt-6">
-        {% block content %}{% endblock %}
-      </div>
-      <div class="mt-10 text-xs text-slate-400">
-        Uses Ollama at <span class="font-mono text-slate-200">{{ ollama_base_url or "" }}</span> model <span class="font-mono text-slate-200">{{ ollama_model or "" }}</span>
+  <body class="{{ body_class or 'bg-slate-950 text-slate-100' }}">
+    <div class="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950">
+      <div class="max-w-6xl mx-auto px-4 py-10">
+        <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <a href="/" class="text-2xl font-semibold tracking-tight">
+            <span class="inline-flex items-center gap-2">
+              <span class="inline-flex h-9 w-9 items-center justify-center rounded-2xl bg-indigo-500/20 text-indigo-300">📚</span>
+              Uncensored LLM Book + Audio Factory
+            </span>
+          </a>
+          <nav class="text-sm flex flex-wrap items-center gap-2">
+            <a class="px-4 py-2 rounded-full bg-white/10 text-white hover:bg-white/20" href="/#create">Create</a>
+            <a class="px-4 py-2 rounded-full bg-white/10 text-white hover:bg-white/20" href="/#queue">Queue</a>
+            <a class="px-4 py-2 rounded-full bg-white/10 text-white hover:bg-white/20" href="/#library">Library</a>
+          </nav>
+        </div>
+        <div class="mt-8">
+          {% block content %}{% endblock %}
+        </div>
+        <div class="mt-12 text-xs text-slate-400">
+          Uses Ollama at <span class="font-mono text-slate-200">{{ ollama_base_url or "" }}</span> model <span class="font-mono text-slate-200">{{ ollama_model or "" }}</span>
+        </div>
       </div>
     </div>
   </body>

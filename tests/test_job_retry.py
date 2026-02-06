@@ -4,6 +4,7 @@ from pathlib import Path
 import aiosqlite
 from fastapi.testclient import TestClient
 
+from app import db
 from app.main import app
 from app.settings import settings
 
@@ -34,6 +35,7 @@ async def _insert_job(
 
 def test_retry_failed_job(tmp_path: Path) -> None:
     db_path = str(tmp_path / "test.db")
+    _run(db.init_db(db_path))
 
     _run(
         _insert_job(
@@ -51,13 +53,15 @@ def test_retry_failed_job(tmp_path: Path) -> None:
         settings.db_path = db_path
         client = TestClient(app)
 
-        response = client.post("/jobs/job-failed/retry", allow_redirects=False)
+        response = client.post("/jobs/job-failed/retry", follow_redirects=False)
         assert response.status_code == 303
 
         async def _get_status(job_id: str) -> str:
             async with aiosqlite.connect(db_path) as conn:
                 conn.row_factory = aiosqlite.Row
-                async with conn.execute("SELECT status FROM jobs WHERE id = ?", (job_id,)) as cur:
+                async with conn.execute(
+                    "SELECT status FROM jobs WHERE id = ?", (job_id,)
+                ) as cur:
                     row = await cur.fetchone()
                     return str(row["status"])
 
@@ -68,6 +72,7 @@ def test_retry_failed_job(tmp_path: Path) -> None:
 
 def test_retry_cancelled_job(tmp_path: Path) -> None:
     db_path = str(tmp_path / "test.db")
+    _run(db.init_db(db_path))
 
     _run(
         _insert_job(
@@ -85,13 +90,15 @@ def test_retry_cancelled_job(tmp_path: Path) -> None:
         settings.db_path = db_path
         client = TestClient(app)
 
-        response = client.post("/jobs/job-cancelled/retry", allow_redirects=False)
+        response = client.post("/jobs/job-cancelled/retry", follow_redirects=False)
         assert response.status_code == 303
 
         async def _get_status(job_id: str) -> str:
             async with aiosqlite.connect(db_path) as conn:
                 conn.row_factory = aiosqlite.Row
-                async with conn.execute("SELECT status FROM jobs WHERE id = ?", (job_id,)) as cur:
+                async with conn.execute(
+                    "SELECT status FROM jobs WHERE id = ?", (job_id,)
+                ) as cur:
                     row = await cur.fetchone()
                     return str(row["status"])
 

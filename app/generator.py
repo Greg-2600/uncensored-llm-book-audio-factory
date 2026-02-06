@@ -1,21 +1,25 @@
 from __future__ import annotations
 
 import json
-import os
 from dataclasses import dataclass
+from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any
 
-from . import db
+from .local_tts import LocalTTSError, convert_mp3_to_m4b, synthesize_speech
 from .ollama_client import OllamaError, generate_text
+from .pdf_export import render_markdown_to_pdf
+from .recommendations import recommend_topics_from_recent
+from .settings import settings
+from . import db
 
 
 SYSTEM_TEXT = (
-    "You are an expert textbook author and careful editor. "
-    "Write accurate, college-level material. "
+    "You are an expert technical writer and careful editor. "
+    "Write accurate, in-depth material in a clear book style. "
     "Do not invent citations, statistics, or quotes. "
     "If you are uncertain, explicitly label the statement as uncertain and avoid specifics. "
-    "Prefer clear definitions, worked examples, and consistent notation. "
+    "Prefer clear definitions, concise examples, and consistent notation. "
     "Output must follow the requested format exactly."
 )
 
@@ -44,6 +48,99 @@ def _extract_json(text: str) -> str:
     return text[start : end + 1]
 
 
+class _HTMLTextExtractor(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self._parts: list[str] = []
+
+    def handle_data(self, data: str) -> None:
+        if data:
+            self._parts.append(data)
+
+    def get_text(self) -> str:
+        return "".join(self._parts)
+
+
+def markdown_to_text(markdown_text: str) -> str:
+    try:
+        from markdown import Markdown
+    except Exception:
+        return markdown_text
+    md = Markdown(output_format="html5")
+    html = md.convert(markdown_text)
+    parser = _HTMLTextExtractor()
+    parser.feed(html)
+    return parser.get_text().strip()
+
+
+async def _run_audiobook_job(*, job: db.Job, db_path: str) -> None:
+    text_path: Path | None = None
+    if job.source_path:
+        text_path = Path(job.source_path)
+    elif job.parent_id:
+        parent = await db.get_job(db_path, job.parent_id)
+        if parent and parent.output_path:
+            md_path = Path(parent.output_path)
+            text_path = md_path.with_suffix(".txt")
+
+    if text_path is None:
+        raise ValueError("Audiobook job missing source_path")
+    if not text_path.exists():
+        raise FileNotFoundError("Text source missing")
+
+    text = text_path.read_text(encoding="utf-8")
+    if not text.strip():
+        raise ValueError("Text source is empty")
+
+    mp3_path = text_path.with_suffix(".mp3")
+    audio = await synthesize_speech(
+        text=text,
+        voice=settings.local_tts_default_voice,
+        speed=settings.local_tts_default_speed,
+        format="mp3",
+    )
+    mp3_path.write_bytes(audio)
+
+    await db.set_job_status(
+        db_path,
+        job.id,
+        status="completed",
+        stage="completed",
+        progress=1.0,
+        output_path=str(mp3_path),
+    )
+    await db.append_event(db_path, job.id, "info", f"Audio created: {mp3_path.name}")
+
+
+async def _run_m4b_job(*, job: db.Job, db_path: str) -> None:
+    mp3_path: Path | None = None
+    if job.source_path:
+        mp3_path = Path(job.source_path)
+    elif job.parent_id:
+        parent = await db.get_job(db_path, job.parent_id)
+        if parent and parent.output_path:
+            md_path = Path(parent.output_path)
+            mp3_path = md_path.with_suffix(".mp3")
+
+    if mp3_path is None:
+        raise ValueError("M4B job missing source_path")
+    if not mp3_path.exists():
+        raise FileNotFoundError("MP3 source missing")
+
+    m4b_path = mp3_path.with_suffix(".m4b")
+    convert_mp3_to_m4b(mp3_path=mp3_path, m4b_path=m4b_path)
+
+    await db.set_job_status(
+        db_path,
+        job.id,
+        status="completed",
+        stage="completed",
+        progress=1.0,
+        output_path=str(m4b_path),
+    )
+    await db.append_event(db_path, job.id, "info", f"M4B created: {m4b_path.name}")
+
+
 async def generate_outline(
     *,
     topic: str,
@@ -53,7 +150,7 @@ async def generate_outline(
     timeout_seconds: float,
 ) -> Outline:
     prompt = f"""
-Create a high-quality college-level textbook outline for the topic:
+Create a high-quality, in-depth outline for a book on the topic:
 
 TOPIC: {topic}
 
@@ -77,7 +174,7 @@ Return ONLY valid JSON with this schema:
 Constraints:
 - {max_chapters} chapters maximum.
 - Chapters must progress from fundamentals to advanced topics.
-- Use precise terminology.
+- Use precise, book-appropriate terminology.
 """.strip()
 
     text = await generate_text(
@@ -124,7 +221,7 @@ async def generate_chapter_markdown(
     )
 
     prompt = f"""
-Write Chapter {ch_num}: {ch_title} for a college-level textbook titled "{outline.title}" about:
+Write Chapter {ch_num}: {ch_title} for an in-depth book titled "{outline.title}" about:
 
 TOPIC: {topic}
 
@@ -143,8 +240,11 @@ Chapter requirements:
 - Start with "## Chapter {ch_num}: {ch_title}".
 - Include clear definitions and at least one worked example when appropriate.
 - If you present formulas, define symbols.
-- Add a short "### Summary" and "### Exercises" at the end.
-- Add "### Accuracy notes" listing any uncertain claims (or say "None").
+- Expand each section to 3–5 paragraphs with depth and clarity.
+- Add a short "### Case Study" or "### Application" section.
+- Add a "### Key Takeaways" bullet list.
+- Add a short "### Summary" at the end.
+- Add a "### Glossary Recap" with 3–7 key terms from the chapter.
 """.strip()
 
     return await generate_text(
@@ -167,6 +267,227 @@ async def run_job(
     max_chapters: int,
     timeout_seconds: float,
 ) -> None:
+    if job.job_type == "text":
+        try:
+            await db.set_job_status(
+                db_path, job.id, status="running", stage="text", progress=0.1
+            )
+            await db.append_event(db_path, job.id, "info", "Generating text")
+
+            md_path: Path | None = None
+            if job.source_path:
+                md_path = Path(job.source_path)
+            elif job.parent_id:
+                parent = await db.get_job(db_path, job.parent_id)
+                if parent and parent.output_path:
+                    md_path = Path(parent.output_path)
+
+            if md_path is None:
+                raise ValueError("Text job missing source markdown")
+            if not md_path.exists():
+                raise FileNotFoundError("Markdown source missing")
+
+            md_text = md_path.read_text(encoding="utf-8")
+            text = markdown_to_text(md_text)
+            if not text.strip():
+                raise ValueError("Markdown source is empty")
+
+            text_path = md_path.with_suffix(".txt")
+            text_path.write_text(text, encoding="utf-8")
+
+            await db.set_job_status(
+                db_path,
+                job.id,
+                status="completed",
+                stage="completed",
+                progress=1.0,
+                output_path=str(text_path),
+            )
+            await db.append_event(
+                db_path, job.id, "info", f"Text created: {text_path.name}"
+            )
+        except (ValueError, FileNotFoundError) as e:
+            await db.set_job_status(
+                db_path,
+                job.id,
+                status="failed",
+                stage="failed",
+                progress=1.0,
+                error=str(e),
+            )
+            await db.append_event(db_path, job.id, "error", f"Failed: {e}")
+        except Exception as e:  # noqa: BLE001
+            await db.set_job_status(
+                db_path,
+                job.id,
+                status="failed",
+                stage="failed",
+                progress=1.0,
+                error=repr(e),
+            )
+            await db.append_event(db_path, job.id, "error", f"Failed: {repr(e)}")
+        return
+
+    if job.job_type == "pdf":
+        try:
+            await db.set_job_status(
+                db_path, job.id, status="running", stage="pdf", progress=0.1
+            )
+            await db.append_event(db_path, job.id, "info", "Generating PDF")
+
+            md_path: Path | None = None
+            if job.source_path:
+                md_path = Path(job.source_path)
+            elif job.parent_id:
+                parent = await db.get_job(db_path, job.parent_id)
+                if parent and parent.output_path:
+                    md_path = Path(parent.output_path)
+
+            if md_path is None:
+                raise ValueError("PDF job missing source markdown")
+            if not md_path.exists():
+                raise FileNotFoundError("Markdown source missing")
+
+            md_text = md_path.read_text(encoding="utf-8")
+            pdf_path = md_path.with_suffix(".pdf")
+            render_markdown_to_pdf(md_text, pdf_path)
+
+            await db.set_job_status(
+                db_path,
+                job.id,
+                status="completed",
+                stage="completed",
+                progress=1.0,
+                output_path=str(pdf_path),
+            )
+            await db.append_event(
+                db_path, job.id, "info", f"PDF created: {pdf_path.name}"
+            )
+        except (ValueError, FileNotFoundError, RuntimeError) as e:
+            await db.set_job_status(
+                db_path,
+                job.id,
+                status="failed",
+                stage="failed",
+                progress=1.0,
+                error=str(e),
+            )
+            await db.append_event(db_path, job.id, "error", f"Failed: {e}")
+        except Exception as e:  # noqa: BLE001
+            await db.set_job_status(
+                db_path,
+                job.id,
+                status="failed",
+                stage="failed",
+                progress=1.0,
+                error=repr(e),
+            )
+            await db.append_event(db_path, job.id, "error", f"Failed: {repr(e)}")
+        return
+
+    if job.job_type == "recommend_topics":
+        try:
+            await db.set_job_status(
+                db_path, job.id, status="running", stage="recommendations", progress=0.1
+            )
+            await db.append_event(
+                db_path, job.id, "info", "Refreshing recommended topics"
+            )
+            recent_jobs = await db.list_recent_jobs_summary(db_path, limit=25)
+            topics: list[str] = []
+            if recent_jobs:
+                topics = await recommend_topics_from_recent(
+                    recent_jobs=recent_jobs,
+                    limit=8,
+                    ollama_base_url=ollama_base_url,
+                    ollama_model=ollama_model,
+                    timeout_seconds=min(30.0, timeout_seconds),
+                )
+            await db.set_cache_entry(db_path, "recommended_topics", json.dumps(topics))
+            await db.set_job_status(
+                db_path, job.id, status="completed", stage="completed", progress=1.0
+            )
+            await db.append_event(db_path, job.id, "info", "Recommended topics updated")
+        except (OllamaError, ValueError, json.JSONDecodeError) as e:
+            await db.set_job_status(
+                db_path,
+                job.id,
+                status="failed",
+                stage="failed",
+                progress=1.0,
+                error=str(e),
+            )
+            await db.append_event(db_path, job.id, "error", f"Failed: {e}")
+        except Exception as e:  # noqa: BLE001
+            await db.set_job_status(
+                db_path,
+                job.id,
+                status="failed",
+                stage="failed",
+                progress=1.0,
+                error=repr(e),
+            )
+            await db.append_event(db_path, job.id, "error", f"Failed: {repr(e)}")
+        return
+
+    if job.job_type == "audiobook":
+        try:
+            await db.set_job_status(
+                db_path, job.id, status="running", stage="audio", progress=0.1
+            )
+            await db.append_event(db_path, job.id, "info", "Generating audiobook")
+            await _run_audiobook_job(job=job, db_path=db_path)
+        except (LocalTTSError, ValueError, FileNotFoundError) as e:
+            await db.set_job_status(
+                db_path,
+                job.id,
+                status="failed",
+                stage="failed",
+                progress=1.0,
+                error=str(e),
+            )
+            await db.append_event(db_path, job.id, "error", f"Failed: {e}")
+        except Exception as e:  # noqa: BLE001
+            await db.set_job_status(
+                db_path,
+                job.id,
+                status="failed",
+                stage="failed",
+                progress=1.0,
+                error=repr(e),
+            )
+            await db.append_event(db_path, job.id, "error", f"Failed: {repr(e)}")
+        return
+
+    if job.job_type == "m4b":
+        try:
+            await db.set_job_status(
+                db_path, job.id, status="running", stage="m4b", progress=0.1
+            )
+            await db.append_event(db_path, job.id, "info", "Generating m4b")
+            await _run_m4b_job(job=job, db_path=db_path)
+        except (LocalTTSError, ValueError, FileNotFoundError) as e:
+            await db.set_job_status(
+                db_path,
+                job.id,
+                status="failed",
+                stage="failed",
+                progress=1.0,
+                error=str(e),
+            )
+            await db.append_event(db_path, job.id, "error", f"Failed: {e}")
+        except Exception as e:  # noqa: BLE001
+            await db.set_job_status(
+                db_path,
+                job.id,
+                status="failed",
+                stage="failed",
+                progress=1.0,
+                error=repr(e),
+            )
+            await db.append_event(db_path, job.id, "error", f"Failed: {repr(e)}")
+        return
+
     async def _should_abort() -> bool:
         fresh = await db.get_job(db_path, job.id)
         if fresh is None:
@@ -177,7 +498,9 @@ async def run_job(
         return False
 
     try:
-        await db.set_job_status(db_path, job.id, status="running", stage="starting", progress=0.02)
+        await db.set_job_status(
+            db_path, job.id, status="running", stage="starting", progress=0.02
+        )
         await db.append_event(db_path, job.id, "info", "Job started")
 
         if await _should_abort():
@@ -216,14 +539,23 @@ async def run_job(
             encoding="utf-8",
         )
 
-        await db.append_event(db_path, job.id, "info", f"Outline created: {len(outline.chapters)} chapters")
+        await db.append_event(
+            db_path,
+            job.id,
+            "info",
+            f"Outline created: {len(outline.chapters)} chapters",
+        )
 
         book_parts: list[str] = []
         book_parts.append(f"# {outline.title}\n")
         if outline.description:
             book_parts.append(outline.description.strip() + "\n")
         if outline.prerequisites:
-            book_parts.append("## Prerequisites\n" + "\n".join(f"- {p}" for p in outline.prerequisites) + "\n")
+            book_parts.append(
+                "## Prerequisites\n"
+                + "\n".join(f"- {p}" for p in outline.prerequisites)
+                + "\n"
+            )
 
         chapter_summaries: list[str] = []
         total = max(1, len(outline.chapters))
@@ -236,7 +568,12 @@ async def run_job(
                 stage=f"chapter {idx}/{total}",
                 progress=0.10 + 0.85 * (idx - 1) / total,
             )
-            await db.append_event(db_path, job.id, "info", f"Generating chapter {idx}/{total}: {chapter.get('title')}")
+            await db.append_event(
+                db_path,
+                job.id,
+                "info",
+                f"Generating chapter {idx}/{total}: {chapter.get('title')}",
+            )
 
             chapter_md = await generate_chapter_markdown(
                 outline=outline,
@@ -255,7 +592,11 @@ async def run_job(
             book_parts.append(chapter_md.strip() + "\n")
 
             # crude summary: first ~400 chars
-            chapter_summaries.append((chapter_md.strip().replace("\n", " ")[:400] + "...") if chapter_md else "")
+            chapter_summaries.append(
+                (chapter_md.strip().replace("\n", " ")[:400] + "...")
+                if chapter_md
+                else ""
+            )
 
         if outline.glossary:
             await db.append_event(db_path, job.id, "info", "Adding glossary")
@@ -284,10 +625,21 @@ async def run_job(
             progress=1.0,
             output_path=str(book_path),
         )
-        await db.append_event(db_path, job.id, "info", f"Completed. Output: {book_path.name}")
+        await db.append_event(
+            db_path, job.id, "info", f"Completed. Output: {book_path.name}"
+        )
     except (OllamaError, ValueError, json.JSONDecodeError) as e:
-        await db.set_job_status(db_path, job.id, status="failed", stage="failed", progress=1.0, error=str(e))
+        await db.set_job_status(
+            db_path, job.id, status="failed", stage="failed", progress=1.0, error=str(e)
+        )
         await db.append_event(db_path, job.id, "error", f"Failed: {e}")
     except Exception as e:  # noqa: BLE001
-        await db.set_job_status(db_path, job.id, status="failed", stage="failed", progress=1.0, error=repr(e))
+        await db.set_job_status(
+            db_path,
+            job.id,
+            status="failed",
+            stage="failed",
+            progress=1.0,
+            error=repr(e),
+        )
         await db.append_event(db_path, job.id, "error", f"Failed: {repr(e)}")

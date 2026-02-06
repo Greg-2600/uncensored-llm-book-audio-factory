@@ -1,7 +1,8 @@
+{% set poll_interval = 10 if (queue_stats.running or queue_stats.queued) else 60 %}
 <div class="bg-white rounded-lg shadow p-4"
-     hx-get="/partials/queue_status"
-     hx-trigger="load, every 2s"
-     hx-swap="outerHTML">
+  hx-get="/partials/queue_status"
+  hx-trigger="load, every {{ poll_interval }}s"
+  hx-swap="outerHTML">
   <div class="flex items-center justify-between">
     <div class="text-sm text-slate-600">Queue progress</div>
     <div class="text-sm font-medium">

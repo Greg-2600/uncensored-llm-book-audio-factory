@@ -11,8 +11,9 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
     )
 
-    ollama_base_url: str = "http://192.168.1.248:11434"
-    ollama_model: str = "llama3.2:1b"
+    ollama_base_url: str = "http://127.0.0.1:11434"
+    ollama_model: str = "huihui_ai/llama3.2-abliterate:3b"
+    ollama_auto_pull: bool = False
 
     db_path: str = "data/app.db"
     data_dir: str = "data/jobs"
@@ -22,6 +23,9 @@ class Settings(BaseSettings):
 
     openai_api_key: str | None = None
     openai_tts_model: str = "gpt-4o-mini-tts"
+    local_tts_model: str = "tts_models/en/vctk/vits"
+    local_tts_default_voice: str = "p225"
+    local_tts_default_speed: float = 1.0
 
 
 settings = Settings()

@@ -4,6 +4,7 @@ from pathlib import Path
 import aiosqlite
 from fastapi.testclient import TestClient
 
+from app import db
 from app.main import app
 from app.settings import settings
 
@@ -34,6 +35,7 @@ async def _insert_job(
 
 def test_delete_job(tmp_path: Path) -> None:
     db_path = str(tmp_path / "test.db")
+    _run(db.init_db(db_path))
 
     _run(
         _insert_job(
@@ -50,12 +52,14 @@ def test_delete_job(tmp_path: Path) -> None:
     try:
         settings.db_path = db_path
         client = TestClient(app)
-        response = client.post("/jobs/job-done/delete", allow_redirects=False)
+        response = client.post("/jobs/job-done/delete", follow_redirects=False)
         assert response.status_code == 303
 
         async def _exists(job_id: str) -> bool:
             async with aiosqlite.connect(db_path) as conn:
-                async with conn.execute("SELECT COUNT(1) FROM jobs WHERE id = ?", (job_id,)) as cur:
+                async with conn.execute(
+                    "SELECT COUNT(1) FROM jobs WHERE id = ?", (job_id,)
+                ) as cur:
                     row = await cur.fetchone()
                     return int(row[0]) > 0
 

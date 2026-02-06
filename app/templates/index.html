@@ -1,92 +1,221 @@
 {% extends "base.html" %}
 
 {% block content %}
-  <div class="mb-6">
-    {% include "partials/queue_status.html" %}
-  </div>
-
-  <div class="bg-white rounded-2xl shadow p-6 text-slate-900">
-    <h1 class="text-2xl font-semibold">Generate a book</h1>
-    <p class="mt-2 text-slate-600">Enter a topic; the generator will create an outline and write chapters sequentially.</p>
-
-    <form class="mt-6" method="post" action="/jobs">
-      <label class="block text-sm font-medium">Topic</label>
-      <input
-        class="mt-2 w-full border rounded px-3 py-2"
-        type="text"
-        name="topic"
-        id="topic-input"
-        placeholder="e.g., Information Theory, Real Analysis, Operating Systems"
-        required
-      />
-      {% if recommended_topics %}
-        <div class="mt-3">
-          <div class="text-xs text-slate-500">Recommended topics</div>
-          <div class="mt-2 flex flex-wrap gap-2">
-            {% for topic in recommended_topics %}
-              <button type="button"
-                      class="text-xs bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-full px-3 py-1"
-                      onclick="document.getElementById('topic-input').value='{{ topic | replace("'", "\\'") }}'">
-                {{ topic }}
-              </button>
-            {% endfor %}
+  <div id="create" class="mb-8">
+    <div class="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+      <div class="rounded-3xl bg-white/5 border border-white/10 p-6 shadow-xl shadow-black/30">
+        <div class="flex items-center justify-between">
+          <div>
+            <h1 class="text-2xl font-semibold text-white">Generate a book</h1>
+            <p class="mt-2 text-sm text-slate-300">Pick a topic and we’ll build a full book plus audiobooks.</p>
           </div>
+          <span class="inline-flex items-center gap-2 rounded-full bg-indigo-500/20 px-3 py-1 text-xs text-indigo-200">✨ New ideas</span>
         </div>
-      {% endif %}
-      <label class="block text-sm font-medium mt-4">Model</label>
-      <select class="mt-2 w-full border rounded px-3 py-2" name="model">
-        {% for m in models %}
-          <option value="{{ m }}" {% if m == ollama_model %}selected{% endif %}>{{ m }}</option>
-        {% endfor %}
-      </select>
-      <button class="mt-4 bg-slate-900 text-white rounded px-4 py-2 hover:bg-slate-800" type="submit">
-        Create job
-      </button>
-    </form>
+
+        <form class="mt-6" method="post" action="/jobs">
+          <label class="block text-sm font-medium text-slate-200">Topic</label>
+          <input
+            class="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3 text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-400/70"
+            type="text"
+            name="topic"
+            id="topic-input"
+            placeholder="e.g., Information Theory, Real Analysis, Operating Systems"
+            required
+          />
+          {% if recommended_topics %}
+            <div class="mt-3">
+              <div class="text-xs text-slate-400">Recommended topics</div>
+              <div class="mt-2 flex flex-wrap gap-2">
+                {% for topic in recommended_topics %}
+                  <button type="button"
+                          class="text-xs rounded-full bg-white/10 hover:bg-white/20 text-white px-3 py-1"
+                          onclick="document.getElementById('topic-input').value='{{ topic | replace("'", "\\'") }}'">
+                    {{ topic }}
+                  </button>
+                {% endfor %}
+              </div>
+            </div>
+          {% endif %}
+          <label class="block text-sm font-medium mt-4 text-slate-200">Model</label>
+          <select class="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3 text-white" name="model">
+            {% for m in models %}
+              <option value="{{ m }}" {% if m == ollama_model %}selected{% endif %}>{{ m }}</option>
+            {% endfor %}
+          </select>
+          <button class="mt-5 w-full rounded-2xl bg-indigo-500 px-4 py-3 font-semibold text-white shadow-lg shadow-indigo-500/30 hover:bg-indigo-400" type="submit">
+            Create book
+          </button>
+        </form>
+      </div>
+
+      <div class="rounded-3xl bg-white/5 border border-white/10 p-6 shadow-xl shadow-black/30">
+        <div class="flex items-center justify-between">
+          <h2 class="text-lg font-semibold text-white">Queue progress</h2>
+          <span class="text-xs text-slate-400">Auto-refreshes</span>
+        </div>
+        <div class="mt-4">
+          {% include "partials/queue_status.html" %}
+        </div>
+        <div class="mt-6 text-sm text-slate-300">
+          Tip: Queue jobs are processed in order. Each book finishes all outputs before the next starts.
+        </div>
+      </div>
+    </div>
   </div>
 
-  <div class="mt-8">
+  <div id="queue" class="mt-10">
     <div class="flex items-center justify-between">
-      <h2 class="text-lg font-semibold text-slate-100">Recent jobs</h2>
-      <a href="/jobs" class="text-sm text-slate-300 hover:text-slate-100">View all</a>
+      <h2 class="text-lg font-semibold text-white">Queue</h2>
+      <span class="text-xs text-slate-400">Manage running work</span>
     </div>
-    <div class="mt-3 bg-white rounded-2xl shadow text-slate-900">
-      <table class="w-full text-sm">
-        <thead class="text-left text-slate-600">
-          <tr class="border-b">
-            <th class="p-3">Topic</th>
-            <th class="p-3">Status</th>
-            <th class="p-3">Progress</th>
-            <th class="p-3">Updated</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for job in jobs %}
-            <tr class="border-b last:border-0 hover:bg-slate-50">
-              <td class="p-3">
-                <a class="text-slate-900 hover:underline" href="/jobs/{{ job.id }}">{{ job.topic }}</a>
-              </td>
-              <td class="p-3">
-                <span class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs
-                  {% if job.status == 'running' %}bg-emerald-100 text-emerald-700
-                  {% elif job.status == 'completed' %}bg-slate-200 text-slate-800
-                  {% elif job.status == 'failed' %}bg-rose-100 text-rose-700
-                  {% elif job.status == 'cancelled' %}bg-amber-100 text-amber-700
-                  {% elif job.status == 'stopped' %}bg-indigo-100 text-indigo-700
-                  {% else %}bg-slate-100 text-slate-700{% endif %}
-                ">
-                  {{ job.status }}
-                </span>
-                <span class="text-xs text-slate-500">· {{ job.stage }}</span>
-              </td>
-              <td class="p-3">{{ (job.progress * 100) | round(1) }}%</td>
-              <td class="p-3">{{ job.updated_at }}</td>
+    <div class="mt-4 rounded-3xl bg-white/5 border border-white/10 shadow-xl shadow-black/30 overflow-hidden">
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead class="text-left text-slate-300">
+            <tr class="border-b border-white/10">
+              <th class="p-4">Type</th>
+              <th class="p-4">Title</th>
+              <th class="p-4">Status</th>
+              <th class="p-4">Progress</th>
+              <th class="p-4">Created</th>
+              <th class="p-4">Actions</th>
             </tr>
-          {% else %}
-            <tr><td class="p-3" colspan="4">No jobs yet.</td></tr>
-          {% endfor %}
-        </tbody>
-      </table>
+          </thead>
+          <tbody class="text-slate-100">
+            {% for job in queue_jobs %}
+              <tr class="border-b border-white/10 last:border-0 hover:bg-white/5">
+                <td class="p-4 text-xs text-slate-300">{{ job.job_type or "book" }}</td>
+                <td class="p-4"><a class="hover:underline" href="/jobs/{{ job.id }}">{{ job.topic }}</a></td>
+                <td class="p-4">
+                  <span class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs
+                    {% if job.status == 'running' %}bg-emerald-500/20 text-emerald-200
+                    {% elif job.status == 'completed' %}bg-white/10 text-slate-100
+                    {% elif job.status == 'failed' %}bg-rose-500/20 text-rose-200
+                    {% elif job.status == 'cancelled' %}bg-amber-500/20 text-amber-200
+                    {% elif job.status == 'stopped' %}bg-indigo-500/20 text-indigo-200
+                    {% else %}bg-white/10 text-slate-200{% endif %}
+                  ">
+                    {{ job.status }}
+                  </span>
+                  <span class="text-xs text-slate-400">· {{ job.stage }}</span>
+                </td>
+                <td class="p-4">{{ (job.progress * 100) | round(1) }}%</td>
+                <td class="p-4 text-slate-400">{{ job.created_at }}</td>
+                <td class="p-4">
+                  <div class="flex flex-wrap gap-2">
+                    {% if job.status == "running" %}
+                      <form method="post" action="/jobs/{{ job.id }}/stop">
+                        <button class="text-xs rounded-full bg-amber-500/80 px-3 py-1 text-white hover:bg-amber-400" type="submit">Stop</button>
+                      </form>
+                    {% endif %}
+
+                    {% if job.status in ["queued", "running", "stopped"] %}
+                      <form method="post" action="/jobs/{{ job.id }}/cancel">
+                        <button class="text-xs rounded-full bg-rose-500/80 px-3 py-1 text-white hover:bg-rose-400" type="submit">Cancel</button>
+                      </form>
+                    {% endif %}
+
+                    {% if job.status == "stopped" %}
+                      <form method="post" action="/jobs/{{ job.id }}/resume">
+                        <button class="text-xs rounded-full bg-emerald-500/80 px-3 py-1 text-white hover:bg-emerald-400" type="submit">Resume</button>
+                      </form>
+                    {% endif %}
+
+                    {% if job.status in ["failed", "cancelled"] %}
+                      <form method="post" action="/jobs/{{ job.id }}/retry">
+                        <button class="text-xs rounded-full bg-indigo-500/80 px-3 py-1 text-white hover:bg-indigo-400" type="submit">Retry</button>
+                      </form>
+                    {% endif %}
+
+                    {% if job.status == "queued" %}
+                      <form method="post" action="/jobs/{{ job.id }}/move">
+                        <input type="hidden" name="direction" value="up" />
+                        <button class="text-xs rounded-full bg-white/10 px-3 py-1 text-white hover:bg-white/20" type="submit">Up</button>
+                      </form>
+                      <form method="post" action="/jobs/{{ job.id }}/move">
+                        <input type="hidden" name="direction" value="down" />
+                        <button class="text-xs rounded-full bg-white/10 px-3 py-1 text-white hover:bg-white/20" type="submit">Down</button>
+                      </form>
+                    {% endif %}
+
+                    {% if job.status != "running" %}
+                      <form method="post" action="/jobs/{{ job.id }}/delete">
+                        <button class="text-xs rounded-full bg-white/10 px-3 py-1 text-white hover:bg-white/20" type="submit">Delete</button>
+                      </form>
+                    {% endif %}
+                  </div>
+                </td>
+              </tr>
+            {% else %}
+              <tr><td class="p-4 text-slate-400" colspan="6">No jobs yet.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div id="library" class="mt-10">
+    <div class="flex items-center justify-between">
+      <h2 class="text-lg font-semibold text-white">Library</h2>
+      <span class="text-xs text-slate-400">Your finished books</span>
+    </div>
+    <div class="mt-4 rounded-3xl bg-white/5 border border-white/10 shadow-xl shadow-black/30">
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead class="text-left text-slate-300">
+            <tr class="border-b border-white/10">
+              <th class="p-4">Topic</th>
+              <th class="p-4">Updated</th>
+              <th class="p-4">Read</th>
+              <th class="p-4">Listen</th>
+              <th class="p-4">Download</th>
+            </tr>
+          </thead>
+          <tbody class="text-slate-100">
+            {% for item in items %}
+              {% set job = item.job %}
+              <tr class="border-b border-white/10 last:border-0 hover:bg-white/5">
+                <td class="p-4 font-medium">
+                  <a class="text-white hover:text-indigo-200 hover:underline" href="/jobs/{{ job.id }}">{{ item.title }}</a>
+                </td>
+                <td class="p-4 text-slate-400">{{ job.updated_at }}</td>
+                <td class="p-4">
+                  <a class="inline-flex items-center gap-2 rounded-full bg-indigo-500/20 px-3 py-1 text-indigo-200 hover:bg-indigo-500/30" href="/jobs/{{ job.id }}/read" target="_blank" rel="noreferrer">Read rendered</a>
+                </td>
+                <td class="p-4">
+                  <div class="flex flex-wrap items-center gap-2">
+                    {% if item.assets and item.assets.mp3_ready %}
+                      <a class="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-white hover:bg-white/20 text-xs" href="{{ item.assets.mp3_url }}" target="_blank" rel="noreferrer">MP3</a>
+                    {% else %}
+                      <span class="text-xs text-slate-400">MP3: {{ item.child_status.get('audiobook', 'queued') }}</span>
+                    {% endif %}
+                    {% if item.assets and item.assets.m4b_ready %}
+                      <a class="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-white hover:bg-white/20 text-xs" href="{{ item.assets.m4b_url }}" target="_blank" rel="noreferrer">M4B</a>
+                    {% else %}
+                      <span class="text-xs text-slate-400">M4B: {{ item.child_status.get('m4b', 'queued') }}</span>
+                    {% endif %}
+                  </div>
+                </td>
+                <td class="p-4">
+                  <div class="flex flex-wrap gap-2">
+                    <a class="inline-flex items-center gap-2 rounded-full bg-emerald-500/20 px-3 py-1 text-emerald-100 hover:bg-emerald-500/30" href="/jobs/{{ job.id }}/download.pdf">PDF</a>
+                    {% if item.assets and item.assets.text_ready %}
+                      <a class="inline-flex items-center gap-2 rounded-full bg-emerald-500/20 px-3 py-1 text-emerald-100 hover:bg-emerald-500/30" href="{{ item.assets.text_url }}">Text</a>
+                    {% else %}
+                      <span class="text-xs text-slate-400">Text: queued</span>
+                    {% endif %}
+                  </div>
+                </td>
+              </tr>
+            {% else %}
+              <tr>
+                <td class="p-4 text-slate-400" colspan="5">No completed books yet.</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
     </div>
   </div>
 {% endblock %}

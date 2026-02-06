@@ -17,13 +17,15 @@ def test_library_lists_completed_jobs(tmp_path: Path) -> None:
     _run(db.init_db(db_path))
 
     job = _run(db.create_job(db_path, "Topic 1", "test-model"))
+    book_path = tmp_path / "book.md"
+    book_path.write_text("# Real Analysis\n\nIntro text.", encoding="utf-8")
     _run(
         db.set_job_status(
             db_path,
             job.id,
             status="completed",
             progress=1.0,
-            output_path=str(tmp_path / "book.md"),
+            output_path=str(book_path),
         )
     )
 
@@ -31,9 +33,9 @@ def test_library_lists_completed_jobs(tmp_path: Path) -> None:
     try:
         settings.db_path = db_path
         client = TestClient(app)
-        response = client.get("/library")
+        response = client.get("/library", follow_redirects=True)
         assert response.status_code == 200
         assert "Library" in response.text
-        assert "Topic 1" in response.text
+        assert "Real Analysis" in response.text
     finally:
         settings.db_path = original_db_path

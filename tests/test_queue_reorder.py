@@ -4,6 +4,7 @@ from pathlib import Path
 import aiosqlite
 from fastapi.testclient import TestClient
 
+from app import db
 from app.main import app
 from app.settings import settings
 
@@ -35,6 +36,7 @@ async def _insert_job(
 
 def test_move_job_up_down(tmp_path: Path) -> None:
     db_path = str(tmp_path / "test.db")
+    _run(db.init_db(db_path))
 
     _run(
         _insert_job(
@@ -64,18 +66,24 @@ def test_move_job_up_down(tmp_path: Path) -> None:
         settings.db_path = db_path
         client = TestClient(app)
 
-        response = client.post("/jobs/job-2/move", data={"direction": "up"}, allow_redirects=False)
+        response = client.post(
+            "/jobs/job-2/move", data={"direction": "up"}, follow_redirects=False
+        )
         assert response.status_code == 303
 
         async def _positions():
             async with aiosqlite.connect(db_path) as conn:
-                async with conn.execute("SELECT id, queue_position FROM jobs ORDER BY queue_position ASC") as cur:
+                async with conn.execute(
+                    "SELECT id, queue_position FROM jobs ORDER BY queue_position ASC"
+                ) as cur:
                     return await cur.fetchall()
 
         rows = _run(_positions())
         assert [row[0] for row in rows] == ["job-2", "job-1"]
 
-        response = client.post("/jobs/job-2/move", data={"direction": "down"}, allow_redirects=False)
+        response = client.post(
+            "/jobs/job-2/move", data={"direction": "down"}, follow_redirects=False
+        )
         assert response.status_code == 303
 
         rows = _run(_positions())

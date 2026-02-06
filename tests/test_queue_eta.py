@@ -47,7 +47,7 @@ def test_queue_eta_calculation(tmp_path):
     db_path = str(tmp_path / "test.db")
     _run(db.init_db(db_path))
 
-    now = datetime(2026, 2, 3, 12, 0, 0, tzinfo=timezone.utc)
+    now = datetime.now(timezone.utc)
 
     completed_created = (now - timedelta(minutes=40)).isoformat()
     completed_updated = (now - timedelta(minutes=20)).isoformat()
@@ -111,5 +111,7 @@ def test_queue_eta_calculation(tmp_path):
     assert stats["queued"] == 2
     assert stats["running"] == 1
     assert stats["completed"] == 1
-    assert stats["total_eta_seconds"] == 3000
+    expected_total_eta = 3000
+    assert stats["total_eta_seconds"] is not None
+    assert abs(int(stats["total_eta_seconds"]) - expected_total_eta) <= 5
     assert stats["total_eta_text"] == "50m"

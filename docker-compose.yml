@@ -1,0 +1,23 @@
+services:
+  app:
+    build: .
+    ports:
+      - "8600:8000"
+    environment:
+      OLLAMA_BASE_URL: "http://ollama:11434"
+      OLLAMA_MODEL: "huihui_ai/llama3.2-abliterate:3b"
+      OLLAMA_AUTO_PULL: "true"
+      OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
+      OPENAI_TTS_MODEL: "${OPENAI_TTS_MODEL:-}"
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      - ollama
+
+  ollama:
+    image: ollama/ollama:latest
+    volumes:
+      - ollama:/root/.ollama
+
+volumes:
+  ollama:

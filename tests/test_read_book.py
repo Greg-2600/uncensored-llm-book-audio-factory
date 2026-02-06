@@ -36,6 +36,8 @@ def test_read_book_renders_html(tmp_path: Path) -> None:
         response = client.get(f"/jobs/{job.id}/read")
         assert response.status_code == 200
         assert "Rendered book" in response.text
-        assert "<h1>Title</h1>" in response.text
+        assert "markdown-body" in response.text
+        assert "<h1" in response.text
+        assert "Title</h1>" in response.text
     finally:
         settings.db_path = original_db_path

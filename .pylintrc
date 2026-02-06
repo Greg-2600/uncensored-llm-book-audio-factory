@@ -1,0 +1,31 @@
+[MASTER]
+init-hook=import sys, os; sys.path.insert(0, os.path.abspath('.'))
+ignore=.venv,.run,data
+ignore-patterns=local_tts.py
+ignored-modules=TTS
+
+[MESSAGES CONTROL]
+disable=
+    C0114,
+    C0115,
+    C0116,
+    C0301,
+    R0801,
+    R0902,
+    R0912,
+    R0913,
+    R0914,
+    R0915,
+    R0911,
+    W0603,
+    W0613,
+    W0621,
+    W0622,
+    W0718,
+    E0401,
+    E0402,
+    E0611,
+    C0415
+
+[FORMAT]
+max-line-length=100

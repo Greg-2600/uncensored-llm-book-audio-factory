@@ -1,6 +1,6 @@
 # Feature Implementation TODOs
 
-This document lists implementation TODOs for each requested feature. Each list includes tests and documentation updates.
+This document is a historical plan. Most items below are now implemented and covered by tests in `tests/`. Remaining TODOs may be outdated and should be validated against current behavior.
 
 ---
 
@@ -195,12 +195,12 @@ This document lists implementation TODOs for each requested feature. Each list i
 
 ---
 
-## 11) Text-to-speech playback with voice controls (using OpenAI Whisper)
+## 11) Text-to-speech playback with voice controls (using OpenAI TTS)
 
 **Goal:** Read the book aloud with selectable voice and speed.
 
 **Implementation TODOs**
-- Clarify pipeline: Whisper is speech-to-text; for TTS use OpenAI TTS (or another TTS provider). If Whisper must be used, define conversion workflow and constraints.
+- Use OpenAI TTS (configured via `OPENAI_API_KEY` and `OPENAI_TTS_MODEL`).
 - Add a TTS service layer with configurable voice, speed, and format.
 - Generate audio per chapter and cache in job output folder.
 - Add UI controls (play/pause/seek/voice/speed) in reader view.

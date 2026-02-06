@@ -16,11 +16,13 @@
             <th class="p-4">Topic</th>
             <th class="p-4">Updated</th>
             <th class="p-4">Read</th>
+            <th class="p-4">Listen</th>
             <th class="p-4">Download</th>
           </tr>
         </thead>
         <tbody class="text-slate-200">
-          {% for job in jobs %}
+          {% for item in items %}
+            {% set job = item.job %}
             <tr class="border-b border-slate-800 last:border-0 hover:bg-slate-800/60">
               <td class="p-4 font-medium">
                 <a class="text-slate-100 hover:text-indigo-300 hover:underline" href="/jobs/{{ job.id }}">{{ job.topic }}</a>
@@ -30,12 +32,33 @@
                 <a class="inline-flex items-center gap-2 rounded-full bg-indigo-500/15 px-3 py-1 text-indigo-300 hover:bg-indigo-500/25" href="/jobs/{{ job.id }}/read" target="_blank" rel="noreferrer">Read rendered</a>
               </td>
               <td class="p-4">
-                <a class="inline-flex items-center gap-2 rounded-full bg-emerald-500/15 px-3 py-1 text-emerald-300 hover:bg-emerald-500/25" href="/jobs/{{ job.id }}/download.pdf">Download PDF</a>
+                <div class="flex flex-wrap items-center gap-2">
+                  {% if item.assets and item.assets.mp3_ready %}
+                    <a class="inline-flex items-center gap-2 rounded-full bg-slate-700/60 px-3 py-1 text-slate-100 hover:bg-slate-600 text-xs" href="{{ item.assets.mp3_url }}" target="_blank" rel="noreferrer">MP3</a>
+                  {% else %}
+                    <span class="text-xs text-slate-400">MP3: {{ item.child_status.get('audiobook', 'queued') }}</span>
+                  {% endif %}
+                  {% if item.assets and item.assets.m4b_ready %}
+                    <a class="inline-flex items-center gap-2 rounded-full bg-slate-700/60 px-3 py-1 text-slate-100 hover:bg-slate-600 text-xs" href="{{ item.assets.m4b_url }}" target="_blank" rel="noreferrer">M4B</a>
+                  {% else %}
+                    <span class="text-xs text-slate-400">M4B: {{ item.child_status.get('m4b', 'queued') }}</span>
+                  {% endif %}
+                </div>
+              </td>
+              <td class="p-4">
+                <div class="flex flex-wrap gap-2">
+                  <a class="inline-flex items-center gap-2 rounded-full bg-emerald-500/15 px-3 py-1 text-emerald-300 hover:bg-emerald-500/25" href="/jobs/{{ job.id }}/download.pdf">PDF</a>
+                  {% if item.assets and item.assets.text_ready %}
+                    <a class="inline-flex items-center gap-2 rounded-full bg-emerald-500/15 px-3 py-1 text-emerald-300 hover:bg-emerald-500/25" href="{{ item.assets.text_url }}">Text</a>
+                  {% else %}
+                    <span class="text-xs text-slate-400">Text: queued</span>
+                  {% endif %}
+                </div>
               </td>
             </tr>
           {% else %}
             <tr>
-              <td class="p-6 text-slate-400" colspan="4">No completed books yet.</td>
+              <td class="p-6 text-slate-400" colspan="5">No completed books yet.</td>
             </tr>
           {% endfor %}
         </tbody>
