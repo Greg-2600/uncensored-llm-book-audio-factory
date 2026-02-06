@@ -25,7 +25,7 @@ Open `http://localhost:8000`.
 Run both the web UI and a local Ollama instance via Docker Compose:
 
 ```bash
-docker-compose up --build
+docker-compose up -d --build
 ```
 
 Open `http://localhost:8600` (or `http://<host-ip>:8600` from another machine).
