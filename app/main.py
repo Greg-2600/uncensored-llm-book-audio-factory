@@ -10,6 +10,7 @@ from typing import Optional
 
 from fastapi import FastAPI, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from .eta import estimate_remaining_seconds, format_eta
@@ -23,6 +24,8 @@ from . import db
 
 BASE_DIR = Path(__file__).resolve().parent
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
+static_dir = BASE_DIR / "static"
+static_dir.mkdir(exist_ok=True)
 
 
 class JobRunner:
@@ -75,6 +78,10 @@ class JobRunner:
 
 
 app = FastAPI(title="Uncensored LLM Book + Audio Factory")
+
+# Mount static files directory
+app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+
 runner = JobRunner()
 logger = logging.getLogger("book-generator")
 
