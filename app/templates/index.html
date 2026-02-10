@@ -70,6 +70,34 @@
     </div>
     <div class="mt-4 rounded-3xl bg-white/5 border border-white/10 shadow-xl shadow-black/30 overflow-hidden">
       <div class="overflow-x-auto">
+        <style>
+          .queue-row {
+            display: table-row;
+          }
+          .queue-row.parent {
+            cursor: pointer;
+            user-select: none;
+          }
+          .queue-row.parent:hover {
+            background-color: rgba(255, 255, 255, 0.08);
+          }
+          .queue-row.child {
+            display: none;
+          }
+          .queue-row.parent.expanded ~ .queue-row.child {
+            display: table-row;
+          }
+          .expand-icon {
+            display: inline-block;
+            transition: transform 0.2s;
+          }
+          .queue-row.parent.expanded .expand-icon {
+            transform: rotate(90deg);
+          }
+          .child-indent {
+            padding-left: 2rem;
+          }
+        </style>
         <table class="w-full text-sm">
           <thead class="text-left text-slate-300">
             <tr class="border-b border-white/10">
@@ -83,8 +111,15 @@
           </thead>
           <tbody class="text-slate-100">
             {% for job in queue_jobs %}
-              <tr class="border-b border-white/10 last:border-0 hover:bg-white/5">
-                <td class="p-4 text-xs text-slate-300">{{ job.job_type or "book" }}</td>
+              {% set children = queue_child_map.get(job.id, []) %}
+              <tr class="queue-row parent border-b border-white/10 {% if children %}has-children{% endif %}"
+                  onclick="if(event.target.tagName !== 'FORM' && event.target.tagName !== 'BUTTON') this.classList.toggle('expanded')">
+                <td class="p-4 text-xs text-slate-300">
+                  {% if children %}
+                    <span class="expand-icon">▶</span>
+                  {% endif %}
+                  {{ job.job_type or "book" }}
+                </td>
                 <td class="p-4"><a class="hover:underline" href="/jobs/{{ job.id }}">{{ job.topic }}</a></td>
                 <td class="p-4">
                   <span class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs
@@ -101,7 +136,7 @@
                 </td>
                 <td class="p-4">{{ (job.progress * 100) | round(1) }}%</td>
                 <td class="p-4 text-slate-400">{{ job.created_at }}</td>
-                <td class="p-4">
+                <td class="p-4" onclick="event.stopPropagation()">
                   <div class="flex flex-wrap gap-2">
                     {% if job.status == "running" %}
                       <form method="post" action="/jobs/{{ job.id }}/stop">
@@ -146,6 +181,31 @@
                   </div>
                 </td>
               </tr>
+              <!-- Child jobs (subtasks) -->
+              {% for child in children %}
+                <tr class="queue-row child border-b border-white/10 bg-white/3">
+                  <td class="p-4 text-xs text-slate-400 child-indent">└ {{ child.job_type }}</td>
+                  <td class="p-4 text-sm text-slate-200"><a class="hover:underline" href="/jobs/{{ child.id }}">{{ child.topic }}</a></td>
+                  <td class="p-4">
+                    <span class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs
+                      {% if child.status == 'running' %}bg-emerald-500/20 text-emerald-200
+                      {% elif child.status == 'completed' %}bg-white/10 text-slate-100
+                      {% elif child.status == 'failed' %}bg-rose-500/20 text-rose-200
+                      {% elif child.status == 'cancelled' %}bg-amber-500/20 text-amber-200
+                      {% elif child.status == 'stopped' %}bg-indigo-500/20 text-indigo-200
+                      {% else %}bg-white/10 text-slate-200{% endif %}
+                    ">
+                      {{ child.status }}
+                    </span>
+                    <span class="text-xs text-slate-400">· {{ child.stage }}</span>
+                  </td>
+                  <td class="p-4">{{ (child.progress * 100) | round(1) }}%</td>
+                  <td class="p-4 text-slate-400">{{ child.created_at }}</td>
+                  <td class="p-4 text-xs text-slate-500">
+                    <em>Subtask (reorder via parent)</em>
+                  </td>
+                </tr>
+              {% endfor %}
             {% else %}
               <tr><td class="p-4 text-slate-400" colspan="6">No jobs yet.</td></tr>
             {% endfor %}

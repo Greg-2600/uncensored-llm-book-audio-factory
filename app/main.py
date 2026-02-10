@@ -154,6 +154,12 @@ async def index(request: Request) -> Response:
         models.append(settings.ollama_model)
     if not models:
         models = [settings.ollama_model]
+    
+    # Get child jobs for queue items (for expandable display)
+    queue_child_map = await db.list_child_jobs_for_parents(
+        settings.db_path, [job.id for job in queue_jobs]
+    )
+    
     completed_jobs = await db.list_completed_jobs(settings.db_path, limit=200)
     child_map = await db.list_child_jobs_for_parents(
         settings.db_path, [job.id for job in completed_jobs]
@@ -190,6 +196,7 @@ async def index(request: Request) -> Response:
         {
             "request": request,
             "queue_jobs": queue_jobs,
+            "queue_child_map": queue_child_map,
             "queue_stats": queue_stats,
             "recommended_topics": recommended_topics,
             "models": models,
