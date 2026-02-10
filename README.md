@@ -41,6 +41,7 @@ Notes:
 - ✅ One‑page UI with Create, Queue, and Library sections.
 - ✅ Markdown + PDF + Text + MP3 + M4B assets per book.
 - ✅ Friendly queue controls (stop, cancel, retry, reorder).
+- ✅ Expandable queue sections showing books and their constituent subtasks.
 - ✅ Rendered reader with clean typography.
 
 ## How it works
@@ -52,7 +53,7 @@ Notes:
 - Job controls: stop (`POST /jobs/{id}/stop`), cancel (`POST /jobs/{id}/cancel`), resume (`POST /jobs/{id}/resume`).
 - Retry failed jobs: `POST /jobs/{id}/retry`.
 - Delete jobs: `POST /jobs/{id}/delete` (not allowed for running jobs).
-- Queue ordering: use Up/Down controls in the Queue section for queued jobs.
+- **Queue organization:** Books appear as expandable sections in the queue. Click a book to reveal its constituent subtasks (PDF, MP3, M4B). Only books can be reordered with Up/Down controls; subtasks cannot be reordered individually as they have dependencies.
 - Recommended topics use the Ollama model and recent job topics to suggest new ideas.
 - PDF export: `GET /jobs/{id}/download.pdf` (uses `weasyprint` with `xhtml2pdf` fallback).
 - Rendered reader: `GET /jobs/{id}/read` (opens formatted HTML in a new tab).
