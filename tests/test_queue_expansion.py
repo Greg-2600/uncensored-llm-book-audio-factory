@@ -145,8 +145,8 @@ def test_child_jobs_cannot_be_reordered_directly(temp_db_path: str) -> None:
     )
 
     # Set both to queued status
-    _run(db.set_job_status(temp_db_path, parent.id, "queued", 0.0))
-    _run(db.set_job_status(temp_db_path, child.id, "queued", 0.0))
+    _run(db.set_job_status(temp_db_path, parent.id, status="queued", progress=0.0))
+    _run(db.set_job_status(temp_db_path, child.id, status="queued", progress=0.0))
 
     original_db_path = settings.db_path
     try:
@@ -194,9 +194,9 @@ def test_parent_job_movement_preserves_child_jobs(temp_db_path: str) -> None:
         )
     )
 
-    # Set queue positions
-    _run(db.set_job_status(temp_db_path, parent1.id, "queued", 0.0, queue_position=1))
-    _run(db.set_job_status(temp_db_path, parent2.id, "queued", 0.0, queue_position=2))
+    # Set both parents to queued status
+    _run(db.set_job_status(temp_db_path, parent1.id, status="queued", progress=0.0))
+    _run(db.set_job_status(temp_db_path, parent2.id, status="queued", progress=0.0))
 
     original_db_path = settings.db_path
     try:
