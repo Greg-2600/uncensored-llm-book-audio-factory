@@ -47,6 +47,14 @@ Open **http://localhost:8000** in your browser.
 ### Docker (Recommended)
 
 ```bash
+# Clone the repository
+git clone https://github.com/Greg-2600/uncensored-llm-book-audio-factory.git
+cd uncensored-llm-book-audio-factory
+
+# Run setup script (ensures proper permissions)
+chmod +x setup.sh
+./setup.sh
+
 # One command does everything
 docker-compose up -d --build
 

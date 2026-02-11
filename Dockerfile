@@ -16,14 +16,13 @@ COPY requirements.txt ./
 RUN pip install --no-cache-dir -i https://pypi.org/simple/ -r requirements.txt
 
 COPY app ./app
-# data is mounted as a volume in compose; do not copy during image build
+COPY entrypoint.sh ./
+RUN chmod +x entrypoint.sh
 
-# Create data directory and ensure it's writable by appuser
-RUN mkdir -p /app/data && chown -R appuser:appuser /app
-
-# Switch to non-root user
-USER appuser
+# Set ownership of app directory to appuser
+RUN chown -R appuser:appuser /app
 
 EXPOSE 8000
 
+ENTRYPOINT ["/app/entrypoint.sh"]
 CMD ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
