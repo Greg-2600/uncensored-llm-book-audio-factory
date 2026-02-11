@@ -27,7 +27,7 @@ This is an **AI-first native application**. Unlike traditional apps that bolt AI
 
 ```bash
 # Clone and setup
-git clone <repo>
+git clone https://github.com/Greg-2600/uncensored-llm-book-audio-factory.git
 cd Book_Generator
 
 # Create virtual environment
