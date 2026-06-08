@@ -39,10 +39,10 @@ pip install -r requirements.txt
 cp .env.example .env
 
 # Start the app
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+uvicorn app.main:app --reload --host 0.0.0.0 --port 1984
 ```
 
-Open **http://localhost:8000** in your browser.
+Open **http://localhost:1984** in your browser.
 
 ### Docker (Recommended)
 

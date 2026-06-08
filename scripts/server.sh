@@ -44,7 +44,7 @@ start_app() {
     fi
   fi
 
-  "$VENV_PY" -m uvicorn app.main:app --host 127.0.0.1 --port 8000 > "$UVICORN_LOG" 2>&1 &
+  "$VENV_PY" -m uvicorn app.main:app --host 127.0.0.1 --port 1984 > "$UVICORN_LOG" 2>&1 &
   echo $! > "$UVICORN_PID_FILE"
   echo "App started (pid $(cat "$UVICORN_PID_FILE"))"
   echo "Log: $UVICORN_LOG"
