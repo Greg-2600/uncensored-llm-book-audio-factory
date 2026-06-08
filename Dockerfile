@@ -22,7 +22,7 @@ RUN chmod +x entrypoint.sh
 # Set ownership of app directory to appuser
 RUN chown -R appuser:appuser /app
 
-EXPOSE 8000
+EXPOSE 1984
 
 ENTRYPOINT ["/app/entrypoint.sh"]
-CMD ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "1984"]
