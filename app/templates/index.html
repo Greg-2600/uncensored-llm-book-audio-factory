@@ -12,6 +12,17 @@
           <span class="inline-flex items-center gap-2 rounded-full bg-indigo-500/20 px-3 py-1 text-xs text-indigo-200">✨ New ideas</span>
         </div>
 
+        {% if ollama_warning %}
+          <div class="rounded-2xl border border-rose-500/20 bg-rose-500/10 p-4 text-sm text-rose-100 mb-4">
+            <strong>Ollama warning:</strong> {{ ollama_warning }}
+          </div>
+        {% endif %}
+        <div class="rounded-2xl border border-white/10 bg-slate-950/80 p-4 text-sm text-slate-300 mb-4">
+          <div class="font-medium text-slate-100">Ollama status</div>
+          <div class="mt-1">Mode: <strong>{{ ollama_mode }}</strong></div>
+          <div class="mt-1">{{ ollama_mode_note }}</div>
+          <div class="mt-1">Endpoint: <code class="rounded bg-slate-900 px-2 py-1 text-slate-200">{{ ollama_base_url }}</code></div>
+        </div>
         <form class="mt-6" method="post" action="/jobs">
           <label class="block text-sm font-medium text-slate-200">Topic</label>
           <input

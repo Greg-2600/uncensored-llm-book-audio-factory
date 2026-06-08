@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import shutil
-import subprocess
+import subprocess  # nosec B404
 from typing import Any, AsyncIterator, Optional
 
 import httpx
@@ -19,14 +19,15 @@ async def _retry_delay(attempt: int) -> None:
 
 
 def _list_models_cli() -> list[str]:
-    if not shutil.which("ollama"):
+    ollama_exe = shutil.which("ollama")
+    if not ollama_exe:
         return []
     result = subprocess.run(
-        ["ollama", "list"],
+        [ollama_exe, "list"],
         check=False,
         capture_output=True,
         text=True,
-    )
+    )  # nosec B603
     if result.returncode != 0:
         return []
     lines = [line.strip() for line in result.stdout.splitlines() if line.strip()]
@@ -43,14 +44,24 @@ def _list_models_cli() -> list[str]:
     return models
 
 
+def _build_headers(api_key: Optional[str] = None) -> dict[str, str]:
+    headers: dict[str, str] = {}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+    return headers
+
+
 async def list_models(
     *,
     base_url: str,
+    api_key: str | None = None,
     timeout_seconds: float = 10.0,
 ) -> list[str]:
     url = base_url.rstrip("/") + "/api/tags"
     timeout = httpx.Timeout(timeout_seconds, connect=5.0)
-    async with httpx.AsyncClient(timeout=timeout) as client:
+    async with httpx.AsyncClient(
+        timeout=timeout, headers=_build_headers(api_key)
+    ) as client:
         last_error: Optional[Exception] = None
         for attempt in range(4):
             try:
@@ -87,6 +98,7 @@ async def stream_generate(
     prompt: str,
     system: Optional[str] = None,
     options: Optional[dict[str, Any]] = None,
+    api_key: str | None = None,
     timeout_seconds: float = 600.0,
 ) -> AsyncIterator[str]:
     url = base_url.rstrip("/") + "/api/generate"
@@ -101,7 +113,9 @@ async def stream_generate(
         payload["options"] = options
 
     timeout = httpx.Timeout(timeout_seconds, connect=20.0)
-    async with httpx.AsyncClient(timeout=timeout) as client:
+    async with httpx.AsyncClient(
+        timeout=timeout, headers=_build_headers(api_key)
+    ) as client:
         last_error: Optional[Exception] = None
         for attempt in range(4):
             try:
@@ -135,6 +149,7 @@ async def generate_text(
     prompt: str,
     system: Optional[str] = None,
     options: Optional[dict[str, Any]] = None,
+    api_key: str | None = None,
     timeout_seconds: float = 600.0,
 ) -> str:
     parts: list[str] = []
@@ -144,6 +159,7 @@ async def generate_text(
         prompt=prompt,
         system=system,
         options=options,
+        api_key=api_key,
         timeout_seconds=timeout_seconds,
     ):
         parts.append(chunk)
@@ -154,15 +170,18 @@ async def ensure_model_available(
     *,
     base_url: str,
     model: str,
+    api_key: str | None = None,
     timeout_seconds: float = 600.0,
 ) -> None:
-    models = await list_models(base_url=base_url)
+    models = await list_models(base_url=base_url, api_key=api_key)
     if model in models:
         return
     url = base_url.rstrip("/") + "/api/pull"
     payload = {"name": model, "stream": False}
     timeout = httpx.Timeout(timeout_seconds, connect=20.0)
-    async with httpx.AsyncClient(timeout=timeout) as client:
+    async with httpx.AsyncClient(
+        timeout=timeout, headers=_build_headers(api_key)
+    ) as client:
         last_error: Optional[Exception] = None
         for attempt in range(4):
             try:

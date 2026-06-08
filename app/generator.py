@@ -6,20 +6,23 @@ from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any
 
-from .local_tts import LocalTTSError, convert_mp3_to_m4b, synthesize_speech
+from .local_tts import LocalTTSError, convert_mp3_to_m4b
+from .openai_tts import OpenAITTSError
 from .ollama_client import OllamaError, generate_text
 from .pdf_export import render_markdown_to_pdf
 from .recommendations import recommend_topics_from_recent
 from .settings import settings
+from .tts import synthesize_speech
 from . import db
 
 
 SYSTEM_TEXT = (
-    "You are an expert technical writer and careful editor. "
-    "Write accurate, in-depth material in a clear book style. "
+    "You are an expert technical writer, careful editor, and polished author. "
+    "Write accurate, in-depth material in a professional book style with clear structure, precise terminology, and strong transitions. "
     "Do not invent citations, statistics, or quotes. "
     "If you are uncertain, explicitly label the statement as uncertain and avoid specifics. "
-    "Prefer clear definitions, concise examples, and consistent notation. "
+    "Prefer clear definitions, concrete examples, and consistent notation. "
+    "Avoid vague filler and keep the text focused, authoritative, and readable. "
     "Output must follow the requested format exactly."
 )
 
@@ -95,7 +98,7 @@ async def _run_audiobook_job(*, job: db.Job, db_path: str) -> None:
     mp3_path = text_path.with_suffix(".mp3")
     audio = await synthesize_speech(
         text=text,
-        voice=settings.local_tts_default_voice,
+        voice=None,
         speed=settings.local_tts_default_speed,
         format="mp3",
     )
@@ -175,6 +178,8 @@ Constraints:
 - {max_chapters} chapters maximum.
 - Chapters must progress from fundamentals to advanced topics.
 - Use precise, book-appropriate terminology.
+- Avoid generic chapter titles like "Introduction" or "Advanced Topics"; choose specific, actionable titles.
+- Make chapter summaries concrete and distinctive.
 """.strip()
 
     text = await generate_text(
@@ -238,13 +243,15 @@ Output format: Markdown ONLY.
 
 Chapter requirements:
 - Start with "## Chapter {ch_num}: {ch_title}".
-- Include clear definitions and at least one worked example when appropriate.
-- If you present formulas, define symbols.
-- Expand each section to 3–5 paragraphs with depth and clarity.
+- Use a confident, polished author voice appropriate for a technical book.
+- Include clear definitions, concrete examples, and concrete applications.
+- If you present formulas, define every symbol and keep notation consistent.
+- Expand each section to at least 3 substantive paragraphs with depth and clarity.
 - Add a short "### Case Study" or "### Application" section.
 - Add a "### Key Takeaways" bullet list.
 - Add a short "### Summary" at the end.
 - Add a "### Glossary Recap" with 3–7 key terms from the chapter.
+- Avoid vague filler, repetition, and generic phrasing.
 """.strip()
 
     return await generate_text(
@@ -253,6 +260,41 @@ Chapter requirements:
         prompt=prompt,
         system=SYSTEM_TEXT,
         options={"temperature": 0.2, "top_p": 0.9},
+        timeout_seconds=timeout_seconds,
+    )
+
+
+async def refine_chapter_markdown(
+    *,
+    chapter_markdown: str,
+    outline: Outline,
+    chapter: dict[str, Any],
+    topic: str,
+    ollama_base_url: str,
+    ollama_model: str,
+    timeout_seconds: float,
+) -> str:
+    ch_num = chapter.get("number")
+    ch_title = chapter.get("title")
+    prompt = f"""
+Review the following chapter draft and improve clarity, organization, and flow while preserving the existing Markdown structure and meaning.
+Keep all headings, examples, summaries, and glossary recap sections. Remove repetition, reduce vague filler, and make the chapter read like a refined technical book.
+Return only the improved chapter text in Markdown.
+
+Book title: {outline.title}
+Chapter: {ch_num}: {ch_title}
+Topic: {topic}
+
+Chapter draft:
+{chapter_markdown}
+""".strip()
+
+    return await generate_text(
+        base_url=ollama_base_url,
+        model=ollama_model,
+        prompt=prompt,
+        system=SYSTEM_TEXT,
+        options={"temperature": 0.0, "top_p": 0.95},
         timeout_seconds=timeout_seconds,
     )
 
@@ -437,7 +479,7 @@ async def run_job(
             )
             await db.append_event(db_path, job.id, "info", "Generating audiobook")
             await _run_audiobook_job(job=job, db_path=db_path)
-        except (LocalTTSError, ValueError, FileNotFoundError) as e:
+        except (LocalTTSError, OpenAITTSError, ValueError, FileNotFoundError) as e:
             await db.set_job_status(
                 db_path,
                 job.id,
@@ -466,7 +508,7 @@ async def run_job(
             )
             await db.append_event(db_path, job.id, "info", "Generating m4b")
             await _run_m4b_job(job=job, db_path=db_path)
-        except (LocalTTSError, ValueError, FileNotFoundError) as e:
+        except (LocalTTSError, OpenAITTSError, ValueError, FileNotFoundError) as e:
             await db.set_job_status(
                 db_path,
                 job.id,
@@ -580,6 +622,19 @@ async def run_job(
                 chapter=chapter,
                 topic=job.topic,
                 previous_chapter_summaries=chapter_summaries,
+                ollama_base_url=ollama_base_url,
+                ollama_model=ollama_model,
+                timeout_seconds=timeout_seconds,
+            )
+
+            if await _should_abort():
+                return
+
+            chapter_md = await refine_chapter_markdown(
+                chapter_markdown=chapter_md,
+                outline=outline,
+                chapter=chapter,
+                topic=job.topic,
                 ollama_base_url=ollama_base_url,
                 ollama_model=ollama_model,
                 timeout_seconds=timeout_seconds,

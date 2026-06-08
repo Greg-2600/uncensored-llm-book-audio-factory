@@ -140,21 +140,32 @@ Only the book can be reordered. Subtasks inherit dependencies and always follow.
 ## ⚙️ Configuration
 
 ### Environment Variables
-Create a `.env` file (or set via exports):
+Create a `.env` file and optionally a `.secrets` file for private credentials.
 
 ```bash
 # Model configuration
 export OLLAMA_BASE_URL="http://127.0.0.1:11434"
+export OLLAMA_API_KEY=""
 export OLLAMA_MODEL="huihui_ai/llama3.2-abliterate:3b"
 export OLLAMA_AUTO_PULL=true
 
 # TTS configuration
+export TTS_PROVIDER="auto"       # auto, local, or openai
 export LOCAL_TTS_MODEL="tts_models/en/vctk/vits"
 export LOCAL_TTS_DEFAULT_VOICE="p225"
+export OPENAI_TTS_MODEL="gpt-4o-mini-tts"
+export OPENAI_TTS_DEFAULT_VOICE="alloy"
 
 # API timeouts
 export REQUEST_TIMEOUT_SECONDS="120"
+
+# TTS provider notes
+# - auto: use OpenAI TTS when OPENAI_API_KEY is configured, otherwise local Coqui TTS
+# - local: always use local Coqui TTS
+# - openai: always use OpenAI TTS (requires OPENAI_API_KEY)
 ```
+
+If `OLLAMA_API_KEY` is set and `OLLAMA_BASE_URL` is left at the default local address, the app will automatically switch to Ollama Cloud.
 
 ### Switching Models
 Change `OLLAMA_MODEL` in `.env` or set via environment. The app auto-pulls on startup if missing.
@@ -163,6 +174,8 @@ Change `OLLAMA_MODEL` in `.env` or set via environment. The app auto-pulls on st
 Coqui TTS downloads on first use. Speaker IDs vary by model:
 - `p225`, `p229`, `p230` for VCTK model
 - Try different voices to find your favorite
+
+If `TTS_PROVIDER` is set to `openai`, the app will use OpenAI speech synthesis with `OPENAI_TTS_MODEL` and `OPENAI_TTS_DEFAULT_VOICE`.
 
 ---
 
@@ -238,8 +251,8 @@ Logs are written to `.run/uvicorn.log`.
 
 - **Fully sandboxed:** LLM runs in Docker; cannot access host files
 - **No cloud calls:** Everything is local and private
-- **Data protection:** `.env` and `data/` ignored in git
-- **Secrets hygiene:** Never commit real `.env` files
+- **Data protection:** `.env`, `.secrets`, and `data/` ignored in git
+- **Secrets hygiene:** Never commit real credential files
 - **Open source:** Full transparency; audit the code
 
 ---

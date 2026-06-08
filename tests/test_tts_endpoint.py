@@ -34,14 +34,15 @@ def test_tts_returns_audio(tmp_path: Path, monkeypatch) -> None:
         settings.db_path = db_path
 
         async def _fake_speech(
-            *, text: str, voice: str | None, speed: float, format: str = "mp3"
+            *, text: str, voice: str | None, speed: float, format: str = "mp3", provider: str | None = None
         ) -> bytes:
             return b"audio"
 
         monkeypatch.setattr("app.main.synthesize_speech", _fake_speech)
         client = TestClient(app)
         response = client.post(
-            f"/jobs/{job.id}/tts", data={"voice": "alloy", "speed": 1.0}
+            f"/jobs/{job.id}/tts",
+            data={"voice": "alloy", "speed": 1.0, "provider": "auto"},
         )
         assert response.status_code == 200
         assert response.headers["content-type"].startswith("audio/mpeg")

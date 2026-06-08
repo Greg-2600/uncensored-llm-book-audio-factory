@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import time
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Optional
 
@@ -15,10 +16,12 @@ from fastapi.templating import Jinja2Templates
 
 from .eta import estimate_remaining_seconds, format_eta
 from .generator import markdown_to_text, run_job
-from .local_tts import LocalTTSError, synthesize_speech
+from .local_tts import LocalTTSError
+from .openai_tts import OpenAITTSError
 from .ollama_client import ensure_model_available, list_models
 from .pdf_export import render_markdown_to_pdf
 from .settings import settings
+from .tts import synthesize_speech
 from . import db
 
 
@@ -70,14 +73,35 @@ class JobRunner:
                 job=job,
                 db_path=settings.db_path,
                 data_dir=settings.data_dir,
-                ollama_base_url=settings.ollama_base_url,
+                ollama_base_url=settings.effective_ollama_base_url,
                 ollama_model=job.model or settings.ollama_model,
                 max_chapters=settings.max_chapters,
                 timeout_seconds=settings.request_timeout_seconds,
             )
 
 
-app = FastAPI(title="Uncensored LLM Book + Audio Factory")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    os.makedirs(settings.data_dir, exist_ok=True)
+    await db.init_db(settings.db_path)
+    if settings.ollama_auto_pull and settings.ollama_model:
+        try:
+            await ensure_model_available(
+                base_url=settings.effective_ollama_base_url,
+                api_key=settings.ollama_api_key,
+                model=settings.ollama_model,
+                timeout_seconds=settings.request_timeout_seconds,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Failed to auto-pull Ollama model: %s", exc)
+    await runner.start()
+    try:
+        yield
+    finally:
+        await runner.stop()
+
+
+app = FastAPI(title="Uncensored LLM Book + Audio Factory", lifespan=lifespan)
 
 # Mount static files directory
 app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
@@ -90,18 +114,22 @@ _models_cache: dict[str, object] = {
     "value": [],
     "updated_at": 0.0,
     "in_flight": False,
+    "error": None,
 }
 
 
 async def _refresh_models() -> None:
     _models_cache["in_flight"] = True
+    _models_cache["error"] = None
     try:
         result = await list_models(
-            base_url=settings.ollama_base_url,
+            base_url=settings.effective_ollama_base_url,
+            api_key=settings.ollama_api_key,
             timeout_seconds=min(5.0, settings.request_timeout_seconds),
         )
-    except Exception:
+    except Exception as exc:
         result = []
+        _models_cache["error"] = str(exc)
     _models_cache["value"] = result
     _models_cache["updated_at"] = time.monotonic()
     _models_cache["in_flight"] = False
@@ -113,27 +141,6 @@ def _run_job_sync(**kwargs: object) -> None:
 
 async def _run_job_background(**kwargs: object) -> None:
     await asyncio.to_thread(_run_job_sync, **kwargs)
-
-
-@app.on_event("startup")
-async def on_startup() -> None:
-    os.makedirs(settings.data_dir, exist_ok=True)
-    await db.init_db(settings.db_path)
-    if settings.ollama_auto_pull and settings.ollama_model:
-        try:
-            await ensure_model_available(
-                base_url=settings.ollama_base_url,
-                model=settings.ollama_model,
-                timeout_seconds=settings.request_timeout_seconds,
-            )
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("Failed to auto-pull Ollama model: %s", exc)
-    await runner.start()
-
-
-@app.on_event("shutdown")
-async def on_shutdown() -> None:
-    await runner.stop()
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -161,12 +168,35 @@ async def index(request: Request) -> Response:
         models.append(settings.ollama_model)
     if not models:
         models = [settings.ollama_model]
-    
+
+    using_cloud_key = bool(settings.ollama_api_key)
+    is_default_local = settings.ollama_base_url == "http://127.0.0.1:11434"
+    if using_cloud_key and is_default_local:
+        ollama_mode = "Ollama Cloud"
+        ollama_mode_note = (
+            "API key detected. Requests will use Ollama Cloud automatically."
+        )
+    elif using_cloud_key:
+        ollama_mode = "Ollama Cloud"
+        ollama_mode_note = "Using custom Ollama host with an API key."
+    elif is_default_local:
+        ollama_mode = "Local Ollama"
+        ollama_mode_note = (
+            "No cloud key configured. Set OLLAMA_API_KEY to switch to Ollama Cloud."
+        )
+    else:
+        ollama_mode = "Custom Ollama host"
+        ollama_mode_note = "Using a custom Ollama URL without an API key."
+
+    ollama_warning = None
+    if _models_cache.get("error"):
+        ollama_warning = "Unable to refresh the Ollama model list. Check your API key, host, and network connectivity."
+
     # Get child jobs for queue items (for expandable display)
     queue_child_map = await db.list_child_jobs_for_parents(
         settings.db_path, [job.id for job in queue_jobs]
     )
-    
+
     completed_jobs = await db.list_completed_jobs(settings.db_path, limit=200)
     child_map = await db.list_child_jobs_for_parents(
         settings.db_path, [job.id for job in completed_jobs]
@@ -208,8 +238,11 @@ async def index(request: Request) -> Response:
             "recommended_topics": recommended_topics,
             "models": models,
             "items": library_items,
-            "ollama_base_url": settings.ollama_base_url,
+            "ollama_base_url": settings.effective_ollama_base_url,
             "ollama_model": settings.ollama_model,
+            "ollama_mode": ollama_mode,
+            "ollama_mode_note": ollama_mode_note,
+            "ollama_warning": ollama_warning,
         },
     )
 
@@ -486,6 +519,9 @@ async def read_book(request: Request, job_id: str) -> Response:
             "job": job,
             "html_body": html_body,
             "local_tts_default_voice": settings.local_tts_default_voice,
+            "tts_provider": settings.tts_provider,
+            "openai_tts_default_voice": settings.openai_tts_default_voice,
+            "openai_api_key_present": bool(settings.openai_api_key),
             "body_class": "read-view bg-slate-100 text-slate-900",
         },
     )
@@ -531,6 +567,7 @@ async def read_book_tts(
     job_id: str,
     voice: str = Form(default=""),
     speed: float = Form(default=1.0),
+    provider: str = Form(default=""),
 ) -> Response:
     job = await db.get_job(settings.db_path, job_id)
     if job is None:
@@ -561,11 +598,12 @@ async def read_book_tts(
     try:
         audio = await synthesize_speech(
             text=text,
-            voice=voice or settings.local_tts_default_voice,
+            voice=voice or None,
             speed=speed,
             format="mp3",
+            provider=provider or None,
         )
-    except LocalTTSError as exc:
+    except (LocalTTSError, OpenAITTSError) as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
     assets["mp3"].write_bytes(audio)
