@@ -1,16 +1,27 @@
 import asyncio
+from pathlib import Path
 
 from fastapi.testclient import TestClient
 
+from app import db
 from app.main import app
+from app.settings import settings
 
 
 def _run(coro):
     return asyncio.run(coro)
 
 
-def test_index_contains_dark_theme() -> None:
-    client = TestClient(app)
-    response = client.get("/")
-    assert response.status_code == 200
-    assert "bg-slate-950" in response.text
+def test_index_contains_dark_theme(tmp_path: Path) -> None:
+    db_path = str(tmp_path / "test.db")
+    _run(db.init_db(db_path))
+
+    original_db_path = settings.db_path
+    try:
+        settings.db_path = db_path
+        client = TestClient(app)
+        response = client.get("/")
+        assert response.status_code == 200
+        assert "bg-slate-950" in response.text
+    finally:
+        settings.db_path = original_db_path
