@@ -161,7 +161,10 @@ def test_child_jobs_cannot_be_reordered_directly(temp_db_path: str) -> None:
             follow_redirects=False,
         )
         # The endpoint works but the UI doesn't expose it for child jobs
-        assert response.status_code in [303, 404]  # Redirect on success or 404 if not found
+        assert response.status_code in [
+            303,
+            404,
+        ]  # Redirect on success or 404 if not found
 
     finally:
         settings.db_path = original_db_path
@@ -175,7 +178,7 @@ def test_parent_job_movement_preserves_child_jobs(temp_db_path: str) -> None:
     parent1 = _run(db.create_job(temp_db_path, "Topic A", "test-model"))
     parent2 = _run(db.create_job(temp_db_path, "Topic B", "test-model"))
 
-    child1 = _run(
+    _run(
         db.create_job(
             temp_db_path,
             "PDF: Topic A",
@@ -184,7 +187,7 @@ def test_parent_job_movement_preserves_child_jobs(temp_db_path: str) -> None:
             parent_id=parent1.id,
         )
     )
-    child2 = _run(
+    _run(
         db.create_job(
             temp_db_path,
             "PDF: Topic B",

@@ -34,7 +34,12 @@ def test_tts_returns_audio(tmp_path: Path, monkeypatch) -> None:
         settings.db_path = db_path
 
         async def _fake_speech(
-            *, text: str, voice: str | None, speed: float, format: str = "mp3", provider: str | None = None
+            *,
+            text: str,
+            voice: str | None,
+            speed: float,
+            format: str = "mp3",
+            provider: str | None = None,
         ) -> bytes:
             return b"audio"
 
