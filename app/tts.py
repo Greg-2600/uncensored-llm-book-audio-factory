@@ -4,7 +4,6 @@ from . import local_tts
 from .openai_tts import OpenAITTSError, synthesize_speech as openai_synthesize_speech
 from .settings import settings
 
-
 TTS_PROVIDERS = {"auto", "local", "openai"}
 
 
@@ -15,7 +14,9 @@ def _resolve_provider(provider: str | None) -> str:
     if provider == "auto":
         return "openai" if settings.openai_api_key else "local"
     if provider == "openai" and not settings.openai_api_key:
-        raise OpenAITTSError("OpenAI TTS provider selected but OPENAI_API_KEY is not configured")
+        raise OpenAITTSError(
+            "OpenAI TTS provider selected but OPENAI_API_KEY is not configured"
+        )
     return provider
 
 

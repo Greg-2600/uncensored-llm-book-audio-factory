@@ -40,8 +40,7 @@ class Job:
 async def init_db(db_path: str) -> None:
     os.makedirs(os.path.dirname(db_path), exist_ok=True)
     async with aiosqlite.connect(db_path) as db:
-        await db.execute(
-            """
+        await db.execute("""
             CREATE TABLE IF NOT EXISTS jobs (
               id TEXT PRIMARY KEY,
               topic TEXT NOT NULL,
@@ -59,10 +58,8 @@ async def init_db(db_path: str) -> None:
               created_at TEXT NOT NULL,
               updated_at TEXT NOT NULL
             )
-            """
-        )
-        await db.execute(
-            """
+            """)
+        await db.execute("""
             CREATE TABLE IF NOT EXISTS job_events (
               id INTEGER PRIMARY KEY AUTOINCREMENT,
               job_id TEXT NOT NULL,
@@ -71,8 +68,7 @@ async def init_db(db_path: str) -> None:
               message TEXT NOT NULL,
               FOREIGN KEY(job_id) REFERENCES jobs(id)
             )
-            """
-        )
+            """)
         await db.execute(
             "CREATE INDEX IF NOT EXISTS idx_job_events_job_id ON job_events(job_id)"
         )
@@ -96,8 +92,7 @@ async def _ensure_queue_position(db_path: str) -> None:
             await db.execute("ALTER TABLE jobs ADD COLUMN queue_position INTEGER")
             await db.commit()
 
-        await db.execute(
-            """
+        await db.execute("""
             WITH ordered AS (
               SELECT id, row_number() OVER (ORDER BY created_at ASC) AS rn
               FROM jobs
@@ -106,8 +101,7 @@ async def _ensure_queue_position(db_path: str) -> None:
             UPDATE jobs
             SET queue_position = (SELECT rn FROM ordered WHERE ordered.id = jobs.id)
             WHERE queue_position IS NULL
-            """
-        )
+            """)
         await db.commit()
 
         await db.execute(
@@ -168,15 +162,13 @@ async def _ensure_started_at_column(db_path: str) -> None:
 
 async def _ensure_cache_table(db_path: str) -> None:
     async with aiosqlite.connect(db_path) as db:
-        await db.execute(
-            """
+        await db.execute("""
             CREATE TABLE IF NOT EXISTS app_cache (
               key TEXT PRIMARY KEY,
               value TEXT NOT NULL,
               updated_at TEXT NOT NULL
             )
-            """
-        )
+            """)
         await db.commit()
 
 
@@ -364,16 +356,14 @@ async def list_jobs(db_path: str, limit: int = 50) -> list[Job]:
 async def get_next_queued_job(db_path: str) -> Optional[Job]:
     async with aiosqlite.connect(db_path) as db:
         db.row_factory = aiosqlite.Row
-        async with db.execute(
-            """
+        async with db.execute("""
             SELECT * FROM jobs
             WHERE status = 'queued'
             ORDER BY
                 CASE WHEN job_type = 'recommend_topics' THEN 1 ELSE 0 END,
                 queue_position ASC
             LIMIT 1
-            """
-        ) as cur:
+            """) as cur:
             row = await cur.fetchone()
             if row is None:
                 return None
@@ -619,15 +609,13 @@ async def list_recommended_topics(db_path: str, limit: int = 8) -> list[str]:
 async def count_distinct_topics_since_last_recommend(db_path: str) -> int:
     async with aiosqlite.connect(db_path) as db:
         db.row_factory = aiosqlite.Row
-        async with db.execute(
-            """
+        async with db.execute("""
             SELECT created_at
             FROM jobs
             WHERE job_type = 'recommend_topics'
             ORDER BY created_at DESC
             LIMIT 1
-            """
-        ) as cur:
+            """) as cur:
             row = await cur.fetchone()
             last_ts = row["created_at"] if row else None
 

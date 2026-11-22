@@ -15,7 +15,6 @@ from .settings import settings
 from .tts import synthesize_speech
 from . import db
 
-
 SYSTEM_TEXT = (
     "You are an expert technical writer, careful editor, and polished author. "
     "Write accurate, in-depth material in a professional book style with clear structure, precise terminology, and strong transitions. "

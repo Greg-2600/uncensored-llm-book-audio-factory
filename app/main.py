@@ -24,7 +24,6 @@ from .settings import settings
 from .tts import synthesize_speech
 from . import db
 
-
 BASE_DIR = Path(__file__).resolve().parent
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 static_dir = BASE_DIR / "static"
