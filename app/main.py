@@ -228,6 +228,7 @@ async def index(request: Request) -> Response:
         )
 
     return templates.TemplateResponse(
+        request,
         "index.html",
         {
             "request": request,
@@ -409,6 +410,7 @@ async def jobs_page(request: Request) -> Response:
 async def queue_status_partial(request: Request) -> Response:
     queue_stats = await db.get_queue_stats(settings.db_path)
     return templates.TemplateResponse(
+        request,
         "partials/queue_status.html",
         {"request": request, "queue_stats": queue_stats},
     )
@@ -427,6 +429,7 @@ async def job_detail(request: Request, job_id: str) -> Response:
         )
         eta_text = format_eta(eta_seconds)
     return templates.TemplateResponse(
+        request,
         "job_detail.html",
         {"request": request, "job": job, "events": events, "eta_text": eta_text},
     )
@@ -444,6 +447,7 @@ async def job_status_partial(request: Request, job_id: str) -> Response:
         )
         eta_text = format_eta(eta_seconds)
     return templates.TemplateResponse(
+        request,
         "partials/job_status.html",
         {"request": request, "job": job, "eta_text": eta_text},
     )
@@ -456,6 +460,7 @@ async def job_events_partial(request: Request, job_id: str) -> Response:
         raise HTTPException(status_code=404, detail="Job not found")
     events = await db.get_events(settings.db_path, job_id, limit=200)
     return templates.TemplateResponse(
+        request,
         "partials/job_events.html",
         {"request": request, "job": job, "events": events},
     )
@@ -512,6 +517,7 @@ async def read_book(request: Request, job_id: str) -> Response:
     )
     html_body = renderer.convert(md_text)
     return templates.TemplateResponse(
+        request,
         "read.html",
         {
             "request": request,
