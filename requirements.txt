@@ -12,6 +12,6 @@ weasyprint==70.0
 xhtml2pdf==0.2.28
 TTS==0.22.0
 
-# Starlette 1.x changed TemplateResponse's signature; the app still uses the
-# pre-1.0 API. Keep runtime on the compatible line until those calls are migrated.
-starlette>=0.46,<1
+# Starlette 1.x changed TemplateResponse's signature; the app uses the
+# request-first API required by FastAPI 0.165.
+starlette>=1.6,<2
